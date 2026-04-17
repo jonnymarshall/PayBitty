@@ -82,6 +82,22 @@
 
 ---
 
+### ✅ v1.1.2 — Invoice Form Polish
+
+**Branch:** `fix/invoice-form-improvements` (continued)
+
+- [x] Form too left-aligned — remove `max-w-2xl` constraint, let dashboard width govern
+- [x] Add visual gap/separator between YOU and CLIENT columns
+- [x] Line items: rewrite with flex rows (grid arbitrary values unreliable), keep no-spinners + allow empty
+- [x] Tax % input: replace absolute-positioned `%` with inline flex suffix; remove spinners
+- [x] Date picker: widens automatically once form width is fixed
+- [x] Access code: remove checkbox, single optional input labelled "Access code (Optional)"
+- [x] Remove client name as a required field — all client fields optional
+
+**Done when:** Form looks balanced, line items are horizontal, tax field is clean, access code is simplified.
+
+---
+
 ### ⏳ v1.2 — Client Payment View + BTC QR Code
 
 **Branch:** `v1.2/client-payment-view`

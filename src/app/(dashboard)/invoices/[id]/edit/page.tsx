@@ -46,7 +46,6 @@ export default async function EditInvoicePage({
           due_date: invoice.due_date ? new Date(invoice.due_date) : undefined,
           no_due_date: !invoice.due_date,
           access_code: invoice.access_code ?? "",
-          no_access_code: !invoice.access_code,
         }}
       />
     </div>

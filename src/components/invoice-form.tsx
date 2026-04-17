@@ -8,7 +8,7 @@ import { saveDraft, updateDraft, publishInvoice, InvoicePayload } from "@/app/(d
 import { computeInvoiceTotals, isValidEmail, LineItem } from "@/lib/invoices";
 
 interface InvoiceFormProps {
-  invoiceId?: string; // provided when editing a draft
+  invoiceId?: string;
   initialValues?: Partial<FormState>;
 }
 
@@ -31,7 +31,6 @@ interface FormState {
   due_date: Date | undefined;
   no_due_date: boolean;
   access_code: string;
-  no_access_code: boolean;
 }
 
 const DEFAULT_STATE: FormState = {
@@ -53,7 +52,6 @@ const DEFAULT_STATE: FormState = {
   due_date: undefined,
   no_due_date: false,
   access_code: "",
-  no_access_code: false,
 };
 
 export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
@@ -70,9 +68,10 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
     setForm((prev) => {
       const items = [...prev.line_items];
       if (field === "description") {
-        items[index] = { ...items[index], [field]: raw };
+        items[index] = { ...items[index], description: raw };
       } else {
-        items[index] = { ...items[index], [field]: raw === "" ? 0 : parseFloat(raw) || 0 };
+        const n = raw === "" ? 0 : parseFloat(raw);
+        items[index] = { ...items[index], [field]: isNaN(n) ? 0 : n };
       }
       return { ...prev, line_items: items };
     });
@@ -88,7 +87,6 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
-    if (!form.client_name.trim()) errs.client_name = "Client name is required";
     if (form.client_email && !isValidEmail(form.client_email)) errs.client_email = "Must be a valid email";
     if (form.your_email && !isValidEmail(form.your_email)) errs.your_email = "Must be a valid email";
     if (form.invoice_number && form.invoice_number.length > 50) errs.invoice_number = "Max 50 characters";
@@ -105,7 +103,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       your_company: form.your_company || undefined,
       your_address: form.your_address || undefined,
       your_tax_id: form.your_tax_id || undefined,
-      client_name: form.client_name,
+      client_name: form.client_name || "Unnamed",
       client_email: form.client_email || undefined,
       client_company: form.client_company || undefined,
       client_address: form.client_address || undefined,
@@ -115,7 +113,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       accepts_bitcoin: form.accepts_bitcoin,
       btc_address: form.accepts_bitcoin ? form.btc_address : undefined,
       due_date: !form.no_due_date && form.due_date ? form.due_date.toISOString().split("T")[0] : undefined,
-      access_code: !form.no_access_code ? form.access_code || undefined : undefined,
+      access_code: form.access_code.trim() || undefined,
     };
   }
 
@@ -163,7 +161,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
   const { subtotal, taxFiat, total } = computeInvoiceTotals(form.line_items, taxPct);
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="space-y-8">
       {errors._form && (
         <div className="rounded-md bg-primary/10 border border-primary/30 px-4 py-3 text-sm text-primary">
           {errors._form}
@@ -177,19 +175,19 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
           maxLength={50}
           value={form.invoice_number}
           onChange={(e) => set("invoice_number", e.target.value)}
-          className={inputCls}
+          className={`${inputCls} max-w-xs`}
           placeholder="e.g. INV-001"
         />
       </Field>
 
       {/* YOU / CLIENT split */}
-      <div className="grid grid-cols-2 gap-8">
-        <section className="space-y-3">
+      <div className="grid grid-cols-2 gap-px bg-border rounded-lg overflow-hidden">
+        <section className="space-y-4 bg-background p-6 pr-8">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">You</h2>
-          <Field label="Your name">
+          <Field label="Name">
             <input type="text" value={form.your_name} onChange={(e) => set("your_name", e.target.value)} className={inputCls} />
           </Field>
-          <Field label="Your email" error={errors.your_email}>
+          <Field label="Email" error={errors.your_email}>
             <input type="email" value={form.your_email} onChange={(e) => set("your_email", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Company">
@@ -203,12 +201,12 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
           </Field>
         </section>
 
-        <section className="space-y-3">
+        <section className="space-y-4 bg-background p-6 pl-8">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Client</h2>
-          <Field label="Client name" error={errors.client_name}>
+          <Field label="Name" error={errors.client_name}>
             <input type="text" value={form.client_name} onChange={(e) => set("client_name", e.target.value)} className={inputCls} />
           </Field>
-          <Field label="Client email" error={errors.client_email}>
+          <Field label="Email" error={errors.client_email}>
             <input type="email" value={form.client_email} onChange={(e) => set("client_email", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Company">
@@ -226,46 +224,49 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       {/* Line items */}
       <section className="space-y-3">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Line Items</h2>
+
+        {/* Header row */}
+        <div className="flex gap-3">
+          <span className="flex-1 min-w-0 text-sm font-medium">Description</span>
+          <span className="w-20 shrink-0 text-sm font-medium">Qty</span>
+          <span className="w-28 shrink-0 text-sm font-medium">Unit price</span>
+          <span className="w-8 shrink-0" />
+        </div>
+
         <div className="space-y-2">
           {form.line_items.map((item, i) => (
-            <div key={i} className="grid grid-cols-[1fr_90px_110px_32px] gap-2 items-end">
-              <Field label={i === 0 ? "Description" : ""}>
-                <input
-                  type="text"
-                  value={item.description}
-                  onChange={(e) => updateItem(i, "description", e.target.value)}
-                  className={inputCls}
-                  placeholder="e.g. Design work"
-                />
-              </Field>
-              <Field label={i === 0 ? "Qty" : ""}>
-                <input
-                  type="number"
-                  value={item.quantity === 0 ? "" : item.quantity}
-                  onChange={(e) => updateItem(i, "quantity", e.target.value)}
-                  onBlur={(e) => { if (e.target.value === "") updateItem(i, "quantity", "0"); }}
-                  max={100000}
-                  step="0.01"
-                  className={`${inputCls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                />
-              </Field>
-              <Field label={i === 0 ? "Unit price" : ""}>
-                <input
-                  type="number"
-                  value={item.unit_price === 0 ? "" : item.unit_price}
-                  onChange={(e) => updateItem(i, "unit_price", e.target.value)}
-                  onBlur={(e) => { if (e.target.value === "") updateItem(i, "unit_price", "0"); }}
-                  max={1000000000}
-                  step="0.01"
-                  className={`${inputCls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                />
-              </Field>
-              <div className={i === 0 ? "pt-[22px]" : ""}>
+            <div key={i} className="flex gap-3 items-center">
+              <input
+                type="text"
+                value={item.description}
+                onChange={(e) => updateItem(i, "description", e.target.value)}
+                className={`${inputCls} flex-1 min-w-0`}
+                placeholder="e.g. Design work"
+              />
+              <input
+                type="number"
+                value={item.quantity === 0 ? "" : item.quantity}
+                onChange={(e) => updateItem(i, "quantity", e.target.value)}
+                max={100000}
+                step="any"
+                className={`${inputCls} ${noSpinner} w-20 shrink-0`}
+                placeholder="1"
+              />
+              <input
+                type="number"
+                value={item.unit_price === 0 ? "" : item.unit_price}
+                onChange={(e) => updateItem(i, "unit_price", e.target.value)}
+                max={1000000000}
+                step="any"
+                className={`${inputCls} ${noSpinner} w-28 shrink-0`}
+                placeholder="0.00"
+              />
+              <div className="w-8 shrink-0 flex justify-center">
                 {form.line_items.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeItem(i)}
-                    className="h-9 w-8 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors text-base"
+                    className="h-9 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors text-lg"
                   >
                     ×
                   </button>
@@ -280,19 +281,21 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       </section>
 
       {/* Tax */}
-      <Field label="Tax %">
-        <div className="relative max-w-[140px]">
+      <Field label="Tax">
+        <div className="flex items-center w-36">
           <input
             type="number"
             min={0}
             max={100}
-            step="0.01"
+            step="any"
             value={form.tax_percent}
             onChange={(e) => set("tax_percent", e.target.value)}
             placeholder="0"
-            className={`${inputCls} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none pr-8`}
+            className={`${inputCls} ${noSpinner} rounded-r-none border-r-0 flex-1`}
           />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+          <span className="h-9 px-3 flex items-center border border-input rounded-r-md text-sm text-muted-foreground bg-muted/30 select-none shrink-0">
+            %
+          </span>
         </div>
       </Field>
 
@@ -309,11 +312,13 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
             No due date
           </label>
           {!form.no_due_date && (
-            <DatePicker
-              value={form.due_date}
-              onChange={(d) => set("due_date", d)}
-              placeholder="Select due date"
-            />
+            <div className="max-w-xs">
+              <DatePicker
+                value={form.due_date}
+                onChange={(d) => set("due_date", d)}
+                placeholder="Select due date"
+              />
+            </div>
           )}
         </div>
       </Field>
@@ -343,28 +348,16 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       </section>
 
       {/* Access code */}
-      <section className="space-y-2">
-        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.no_access_code}
-            onChange={(e) => set("no_access_code", e.target.checked)}
-            className="rounded border-border"
-          />
-          No access code (anyone with the link can view)
-        </label>
-        {!form.no_access_code && (
-          <Field label="Access code">
-            <input
-              type="text"
-              value={form.access_code}
-              onChange={(e) => set("access_code", e.target.value.toUpperCase().slice(0, 16))}
-              className={`${inputCls} max-w-[200px] font-mono tracking-widest`}
-              placeholder="e.g. MYCODE01"
-            />
-          </Field>
-        )}
-      </section>
+      <Field label="Access code (Optional)">
+        <input
+          type="text"
+          value={form.access_code}
+          onChange={(e) => set("access_code", e.target.value.toUpperCase().slice(0, 16))}
+          className={`${inputCls} max-w-[200px] font-mono tracking-widest`}
+          placeholder="e.g. MYCODE01"
+        />
+        <p className="text-xs text-muted-foreground">Leave blank for no access code — anyone with the link can view.</p>
+      </Field>
 
       {/* Totals */}
       <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5 text-sm">
@@ -399,7 +392,18 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
 const inputCls =
   "w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring h-9";
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+const noSpinner =
+  "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
+
+function Field({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-1.5">
       {label && <label className="text-sm font-medium">{label}</label>}
