@@ -181,8 +181,9 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       </Field>
 
       {/* YOU / CLIENT split */}
-      <div className="grid grid-cols-2 gap-px bg-border rounded-lg overflow-hidden">
-        <section className="space-y-4 bg-background p-6 pr-8">
+      <div className="grid grid-cols-2 gap-8 relative">
+        <div className="absolute inset-y-0 left-1/2 w-px bg-border -translate-x-1/2" />
+        <section className="space-y-4">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">You</h2>
           <Field label="Name">
             <input type="text" value={form.your_name} onChange={(e) => set("your_name", e.target.value)} className={inputCls} />
@@ -201,7 +202,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
           </Field>
         </section>
 
-        <section className="space-y-4 bg-background p-6 pl-8">
+        <section className="space-y-4">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Client</h2>
           <Field label="Name" error={errors.client_name}>
             <input type="text" value={form.client_name} onChange={(e) => set("client_name", e.target.value)} className={inputCls} />
@@ -240,7 +241,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
                 type="text"
                 value={item.description}
                 onChange={(e) => updateItem(i, "description", e.target.value)}
-                className={`${inputCls} flex-1 min-w-0`}
+                className={`${inputBase} flex-1 min-w-0`}
                 placeholder="e.g. Design work"
               />
               <input
@@ -249,7 +250,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
                 onChange={(e) => updateItem(i, "quantity", e.target.value)}
                 max={100000}
                 step="any"
-                className={`${inputCls} ${noSpinner} w-20 shrink-0`}
+                className={`${inputBase} ${noSpinner} w-20 shrink-0`}
                 placeholder="1"
               />
               <input
@@ -258,7 +259,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
                 onChange={(e) => updateItem(i, "unit_price", e.target.value)}
                 max={1000000000}
                 step="any"
-                className={`${inputCls} ${noSpinner} w-28 shrink-0`}
+                className={`${inputBase} ${noSpinner} w-28 shrink-0`}
                 placeholder="0.00"
               />
               <div className="w-8 shrink-0 flex justify-center">
@@ -389,8 +390,10 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
   );
 }
 
-const inputCls =
-  "w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring h-9";
+const inputBase =
+  "rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring h-9";
+
+const inputCls = `w-full ${inputBase}`;
 
 const noSpinner =
   "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
