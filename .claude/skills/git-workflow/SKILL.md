@@ -1,3 +1,8 @@
+---
+name: git-workflow
+description: Git workflow and SemVer management for Paybitty. Use when starting any new feature, fix, or release — creates the correct branch, enforces SemVer, and keeps CHANGELOG.md in sync. Always invoked before writing code on a new task.
+---
+
 # Git Workflow & Semantic Versioning
 
 Git workflow management and Semantic Versioning (SemVer 2.0.0). Your primary goal is to manage the repository's evolution while ensuring `main` remains stable and documentation is never out of sync.

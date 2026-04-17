@@ -17,32 +17,32 @@
 
 ---
 
-### ⏳ v1.0 — Project Foundation
+### ✅ v1.0 — Project Foundation
 
 **Branch:** `v1.0/foundation`
 
-- [ ] Next.js App Router project with TypeScript
-- [ ] Tailwind CSS + shadcn/ui dark theme configured (bg `#0A0A0A`, surface `#181818`, accent `#DE3C4B`)
-- [ ] Supabase project linked; `invoices` table + enums + RLS policies
-- [ ] Magic link auth via Supabase Auth
-- [ ] Auth middleware protecting `/dashboard` and related routes
-- [ ] Basic layout: navbar, authenticated shell
+- [x] Next.js App Router project with TypeScript
+- [x] Tailwind CSS + shadcn/ui dark theme configured (bg `#0A0A0A`, surface `#181818`, accent `#DE3C4B`)
+- [x] Supabase project linked; `invoices` table + enums + RLS policies
+- [x] Magic link auth via Supabase Auth
+- [x] Auth proxy (proxy.ts, Next.js 16) protecting `/dashboard` and related routes
+- [x] Basic layout: navbar, authenticated shell
 
 **Done when:** A user can sign in via magic link and land on an empty dashboard.
 
 ---
 
-### ⏳ v1.1 — Invoice CRUD + Dashboard
+### ✅ v1.1 — Invoice CRUD + Dashboard
 
 **Branch:** `v1.1/invoice-crud`
 
-- [ ] Invoice creation form: client name, client email, line items, optional tax, due date, BTC address
-- [ ] BTC address uniqueness validation (no reuse across non-draft invoices)
-- [ ] Save as draft
-- [ ] Publish invoice: generates 8-char alphanumeric access code + shareable link
-- [ ] Dashboard: list all invoices with status badge (draft, pending, payment_detected, paid, overdue)
-- [ ] Delete draft invoice
-- [ ] Mark invoice as overdue (manual)
+- [x] Invoice creation form: client name, client email, line items, optional tax, due date, BTC address
+- [x] BTC address uniqueness validation (no reuse across non-draft invoices)
+- [x] Save as draft
+- [x] Publish invoice: generates 8-char alphanumeric access code + shareable link
+- [x] Dashboard: list all invoices with status badge (draft, pending, payment_detected, paid, overdue)
+- [x] Delete draft invoice
+- [x] Mark invoice as overdue (manual)
 
 **Done when:** A freelancer can create, publish, and manage invoices from their dashboard.
 
@@ -135,6 +135,16 @@
 
 - [ ] Saved contacts (client name, email, defaults)
 - [ ] Reusable service/line item templates
+
+---
+
+### 🚫 v2.4 — Multi-Currency Support
+
+**Branch:** `v2.4/multi-currency`
+
+- [ ] Currency selector on invoice creation (USD, EUR, GBP, AUD, CAD, etc.)
+- [ ] BTC price fetched in the selected fiat currency
+- [ ] Dashboard shows currency alongside invoice totals
 
 ---
 

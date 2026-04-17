@@ -2,11 +2,14 @@
   "name": "paybitty-next",
   "version": "0.1.0",
   "private": true,
+  "name": "paybitty",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
