@@ -2,31 +2,59 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { generateAccessCode, computeInvoiceTotals, LineItem } from "@/lib/invoices";
+import { computeInvoiceTotals, LineItem } from "@/lib/invoices";
 
-interface DraftPayload {
+export interface InvoicePayload {
+  invoice_number?: string;
+  your_name?: string;
+  your_email?: string;
+  your_company?: string;
+  your_address?: string;
+  your_tax_id?: string;
   client_name: string;
-  client_email: string;
+  client_email?: string;
+  client_company?: string;
+  client_address?: string;
+  client_tax_id?: string;
   line_items: LineItem[];
-  tax_fiat: number;
-  btc_address: string;
-  due_date: string;
+  tax_percent: number;
+  accepts_bitcoin: boolean;
+  btc_address?: string;
+  due_date?: string;
+  access_code?: string;
 }
 
-export async function saveDraft(payload: DraftPayload) {
+export async function saveDraft(payload: InvoicePayload) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { subtotal, total } = computeInvoiceTotals(payload.line_items, payload.tax_fiat);
+  const { subtotal, taxFiat, total } = computeInvoiceTotals(payload.line_items, payload.tax_percent);
 
   const { data, error } = await supabase
     .from("invoices")
     .insert({
       user_id: user!.id,
-      ...payload,
+      invoice_number: payload.invoice_number || null,
+      your_name: payload.your_name || null,
+      your_email: payload.your_email || null,
+      your_company: payload.your_company || null,
+      your_address: payload.your_address || null,
+      your_tax_id: payload.your_tax_id || null,
+      client_name: payload.client_name,
+      client_email: payload.client_email || null,
+      client_company: payload.client_company || null,
+      client_address: payload.client_address || null,
+      client_tax_id: payload.client_tax_id || null,
+      line_items: payload.line_items,
+      tax_percent: payload.tax_percent,
+      tax_fiat: taxFiat,
       subtotal_fiat: subtotal,
       total_fiat: total,
       currency: "USD",
+      accepts_bitcoin: payload.accepts_bitcoin,
+      btc_address: payload.accepts_bitcoin ? (payload.btc_address || null) : null,
+      due_date: payload.due_date || null,
+      access_code: payload.access_code || null,
       status: "draft",
     })
     .select()
@@ -37,11 +65,59 @@ export async function saveDraft(payload: DraftPayload) {
   return data;
 }
 
+export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: existing } = await supabase
+    .from("invoices")
+    .select("status, user_id")
+    .eq("id", invoiceId)
+    .single();
+
+  if (!existing || existing.user_id !== user!.id) throw new Error("Invoice not found");
+  if (existing.status !== "draft") throw new Error("Only draft invoices can be edited");
+
+  const { subtotal, taxFiat, total } = computeInvoiceTotals(payload.line_items, payload.tax_percent);
+
+  const { data, error } = await supabase
+    .from("invoices")
+    .update({
+      invoice_number: payload.invoice_number || null,
+      your_name: payload.your_name || null,
+      your_email: payload.your_email || null,
+      your_company: payload.your_company || null,
+      your_address: payload.your_address || null,
+      your_tax_id: payload.your_tax_id || null,
+      client_name: payload.client_name,
+      client_email: payload.client_email || null,
+      client_company: payload.client_company || null,
+      client_address: payload.client_address || null,
+      client_tax_id: payload.client_tax_id || null,
+      line_items: payload.line_items,
+      tax_percent: payload.tax_percent,
+      tax_fiat: taxFiat,
+      subtotal_fiat: subtotal,
+      total_fiat: total,
+      accepts_bitcoin: payload.accepts_bitcoin,
+      btc_address: payload.accepts_bitcoin ? (payload.btc_address || null) : null,
+      due_date: payload.due_date || null,
+      access_code: payload.access_code || null,
+    })
+    .eq("id", invoiceId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+  revalidatePath(`/invoices/${invoiceId}`);
+  return data;
+}
+
 export async function publishInvoice(invoiceId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Fetch the invoice
   const { data: invoice, error: fetchError } = await supabase
     .from("invoices")
     .select("*")
@@ -51,26 +127,48 @@ export async function publishInvoice(invoiceId: string) {
   if (fetchError || !invoice) throw new Error("Invoice not found");
   if (invoice.user_id !== user!.id) throw new Error("Forbidden");
 
-  // Check BTC address uniqueness across active (non-draft) invoices
-  const { data: conflict } = await supabase
-    .from("invoices")
-    .select("id")
-    .eq("btc_address", invoice.btc_address)
-    .eq("status", "pending")
-    .maybeSingle();
+  // Only check BTC uniqueness if bitcoin is enabled and address is provided
+  if (invoice.accepts_bitcoin && invoice.btc_address) {
+    const { data: conflict } = await supabase
+      .from("invoices")
+      .select("id")
+      .eq("btc_address", invoice.btc_address)
+      .eq("status", "pending")
+      .maybeSingle();
 
-  if (conflict) throw new Error("BTC address is already used on an active invoice");
-
-  const accessCode = generateAccessCode();
+    if (conflict) throw new Error("BTC address is already used on an active invoice");
+  }
 
   const { error } = await supabase
     .from("invoices")
-    .update({ status: "pending", access_code: accessCode })
+    .update({ status: "pending" })
     .eq("id", invoiceId);
 
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
-  return { accessCode };
+  revalidatePath(`/invoices/${invoiceId}`);
+}
+
+export async function markPaid(invoiceId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select("user_id")
+    .eq("id", invoiceId)
+    .single();
+
+  if (!invoice || invoice.user_id !== user!.id) throw new Error("Invoice not found");
+
+  const { error } = await supabase
+    .from("invoices")
+    .update({ status: "paid" })
+    .eq("id", invoiceId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+  revalidatePath(`/invoices/${invoiceId}`);
 }
 
 export async function deleteDraft(invoiceId: string) {

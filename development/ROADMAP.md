@@ -48,6 +48,40 @@
 
 ---
 
+### ✅ v1.1.1 — Invoice Form Improvements
+
+**Branch:** `fix/invoice-form-improvements`
+
+**Schema changes**
+- [x] Add `invoice_number` (text, nullable) to invoices table
+- [x] Replace `tax_fiat` with `tax_percent` (numeric, default 0) — store as %, compute fiat at save time
+- [x] Add sender fields: `your_name`, `your_email`, `your_company`, `your_address`, `your_tax_id` (all text, nullable)
+- [x] Add client fields: `client_company`, `client_address`, `client_tax_id` (all text, nullable)
+- [x] Add `accepts_bitcoin` (boolean, default false)
+- [x] Change `access_code` to be nullable and user-set (no auto-generation)
+- [x] Add `btc_address` nullable when `accepts_bitcoin` is false
+
+**Form UX**
+- [x] Split form header: "YOU" (left) / "CLIENT" (right) with full sender + client fields
+- [x] Invoice number field (freeform text, max 50 chars)
+- [x] Tax field: percent input (%), compute fiat on save
+- [x] Due date: shadcn date picker + "No due date" toggle
+- [x] Quantity and unit price: freeform (empty = 0 on submit), max qty 100,000 / max unit price 1,000,000,000, 2 decimal places, no spinner arrows
+- [x] "Accept Bitcoin" toggle — shows BTC address field only when enabled
+- [x] Access code: user-set text field OR "No access code" toggle (no auto-generation)
+- [x] Remove red asterisks from all fields
+- [x] Email validation (valid format if entered, not required)
+
+**Invoice detail page**
+- [x] Mark as paid button (manual, for non-BTC or already-confirmed payments)
+- [x] Edit draft button → pre-populated edit form (same as new invoice form)
+- [x] Fix share link: show full URL (`http://...`), add copy button with copied feedback
+- [x] Fix route: `/invoice/[id]` public route stub (placeholder until v1.2)
+
+**Done when:** All form feedback addressed, draft editing works, share link copies correctly.
+
+---
+
 ### ⏳ v1.2 — Client Payment View + BTC QR Code
 
 **Branch:** `v1.2/client-payment-view`

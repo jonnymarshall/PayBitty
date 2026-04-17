@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
+import { CopyButton } from "@/components/copy-button";
 import { InvoiceActions } from "./invoice-actions";
 import type { LineItem } from "@/lib/invoices";
 
@@ -24,45 +25,88 @@ export default async function InvoiceDetailPage({
   if (!invoice) notFound();
 
   const items: LineItem[] = invoice.line_items ?? [];
-  const shareLink = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/invoice/${invoice.id}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const shareLink = `${appUrl}/invoice/${invoice.id}`;
 
   return (
     <div className="max-w-2xl space-y-8">
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
             ← Invoices
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold">{invoice.client_name}</h1>
-          <p className="text-sm text-muted-foreground">{invoice.client_email}</p>
+          <div className="mt-2 flex items-center gap-3">
+            <h1 className="text-2xl font-semibold">{invoice.client_name}</h1>
+            {invoice.invoice_number && (
+              <span className="text-sm text-muted-foreground font-mono">{invoice.invoice_number}</span>
+            )}
+          </div>
+          {invoice.client_email && (
+            <p className="text-sm text-muted-foreground">{invoice.client_email}</p>
+          )}
         </div>
         <InvoiceStatusBadge status={invoice.status} />
       </div>
 
-      {invoice.status !== "draft" && invoice.access_code && (
-        <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-3">
-          <p className="text-sm font-medium">Share with client</p>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Invoice link</p>
-            <code className="block text-xs bg-muted rounded px-3 py-2 break-all">{shareLink}</code>
+      {/* YOU / CLIENT */}
+      {(invoice.your_name || invoice.client_company || invoice.client_address || invoice.client_tax_id) && (
+        <div className="grid grid-cols-2 gap-6 text-sm">
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">From</p>
+            {invoice.your_name && <p className="font-medium">{invoice.your_name}</p>}
+            {invoice.your_company && <p className="text-muted-foreground">{invoice.your_company}</p>}
+            {invoice.your_email && <p className="text-muted-foreground">{invoice.your_email}</p>}
+            {invoice.your_address && <p className="text-muted-foreground">{invoice.your_address}</p>}
+            {invoice.your_tax_id && <p className="text-muted-foreground">Tax ID: {invoice.your_tax_id}</p>}
           </div>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Access code</p>
-            <code className="block text-lg font-mono font-semibold tracking-widest px-3 py-2 bg-muted rounded">
-              {invoice.access_code}
-            </code>
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Bill To</p>
+            <p className="font-medium">{invoice.client_name}</p>
+            {invoice.client_company && <p className="text-muted-foreground">{invoice.client_company}</p>}
+            {invoice.client_email && <p className="text-muted-foreground">{invoice.client_email}</p>}
+            {invoice.client_address && <p className="text-muted-foreground">{invoice.client_address}</p>}
+            {invoice.client_tax_id && <p className="text-muted-foreground">Tax ID: {invoice.client_tax_id}</p>}
           </div>
         </div>
       )}
 
+      {/* Share link (published invoices only) */}
+      {invoice.status !== "draft" && (
+        <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-4">
+          <p className="text-sm font-medium">Share with client</p>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Invoice link</p>
+              <CopyButton text={shareLink} />
+            </div>
+            <code className="block text-xs bg-muted rounded px-3 py-2 break-all">{shareLink}</code>
+          </div>
+          {invoice.access_code ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">Access code</p>
+                <CopyButton text={invoice.access_code} />
+              </div>
+              <code className="block text-lg font-mono font-semibold tracking-widest px-3 py-2 bg-muted rounded">
+                {invoice.access_code}
+              </code>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No access code — anyone with the link can view this invoice.</p>
+          )}
+        </div>
+      )}
+
+      {/* Line items */}
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Line Items</h2>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Line Items</h2>
         <div className="rounded-lg border border-border divide-y divide-border">
           {items.map((item, i) => (
             <div key={i} className="flex items-center justify-between px-4 py-3 text-sm">
               <span>{item.description}</span>
               <span className="text-muted-foreground">
-                {item.quantity} × ${item.unit_price.toFixed(2)} ={" "}
+                {item.quantity} × ${Number(item.unit_price).toFixed(2)} ={" "}
                 <span className="text-foreground font-medium">
                   ${(item.quantity * item.unit_price).toFixed(2)}
                 </span>
@@ -72,20 +116,27 @@ export default async function InvoiceDetailPage({
         </div>
       </section>
 
+      {/* Totals */}
       <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5 text-sm">
         <div className="flex justify-between text-muted-foreground">
           <span>Subtotal</span>
-          <span>${invoice.subtotal_fiat?.toFixed(2)}</span>
+          <span>${Number(invoice.subtotal_fiat).toFixed(2)}</span>
         </div>
-        {invoice.tax_fiat > 0 && (
+        {Number(invoice.tax_percent) > 0 && (
           <div className="flex justify-between text-muted-foreground">
-            <span>Tax</span>
-            <span>${invoice.tax_fiat.toFixed(2)}</span>
+            <span>Tax ({invoice.tax_percent}%)</span>
+            <span>${Number(invoice.tax_fiat).toFixed(2)}</span>
+          </div>
+        )}
+        {invoice.due_date && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>Due</span>
+            <span>{new Date(invoice.due_date).toLocaleDateString()}</span>
           </div>
         )}
         <div className="flex justify-between font-semibold text-base pt-1 border-t border-border">
           <span>Total</span>
-          <span>${invoice.total_fiat?.toFixed(2)} {invoice.currency}</span>
+          <span>${Number(invoice.total_fiat).toFixed(2)} {invoice.currency}</span>
         </div>
       </div>
 

@@ -15,11 +15,16 @@ export interface LineItem {
 
 export function computeInvoiceTotals(
   items: LineItem[],
-  taxFiat: number
-): { subtotal: number; total: number } {
+  taxPercent: number
+): { subtotal: number; taxFiat: number; total: number } {
   const subtotal = items.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
     0
   );
-  return { subtotal, total: subtotal + taxFiat };
+  const taxFiat = Math.round(subtotal * taxPercent) / 100;
+  return { subtotal, taxFiat, total: subtotal + taxFiat };
+}
+
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
