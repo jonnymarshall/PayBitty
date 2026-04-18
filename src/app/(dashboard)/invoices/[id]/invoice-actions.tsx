@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { deleteDraft, markOverdue, publishInvoice } from "../actions";
+import { deleteDraft, markOverdue, markPaid, markUnpaid, publishInvoice } from "../actions";
 
 interface Invoice {
   id: string;
@@ -29,20 +30,26 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
   }
 
   return (
-    <div className="space-y-3">
-      {error && (
-        <p className="text-sm text-primary">{error}</p>
-      )}
+    <div className="space-y-3 pb-8">
+      {error && <p className="text-sm text-primary">{error}</p>}
       <div className="flex gap-3 flex-wrap">
         {invoice.status === "draft" && (
           <>
+            <Link href={`/invoices/${invoice.id}/edit`}>
+              <Button variant="outline">Edit draft</Button>
+            </Link>
             <Button onClick={() => run(() => publishInvoice(invoice.id))} disabled={busy}>
               Publish invoice
             </Button>
             <Button
               variant="outline"
               className="text-primary border-primary/30 hover:bg-primary/10"
-              onClick={() => run(async () => { await deleteDraft(invoice.id); router.push("/dashboard"); })}
+              onClick={() =>
+                run(async () => {
+                  await deleteDraft(invoice.id);
+                  router.push("/dashboard");
+                })
+              }
               disabled={busy}
             >
               Delete draft
@@ -50,8 +57,28 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
           </>
         )}
         {invoice.status === "pending" && (
-          <Button variant="outline" onClick={() => run(() => markOverdue(invoice.id))} disabled={busy}>
-            Mark as overdue
+          <>
+            <Button onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
+              Mark as paid
+            </Button>
+            <Button variant="outline" onClick={() => run(() => markOverdue(invoice.id))} disabled={busy}>
+              Mark as overdue
+            </Button>
+          </>
+        )}
+        {invoice.status === "overdue" && (
+          <Button onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
+            Mark as paid
+          </Button>
+        )}
+        {invoice.status === "payment_detected" && (
+          <Button onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
+            Confirm paid
+          </Button>
+        )}
+        {invoice.status === "paid" && (
+          <Button variant="outline" onClick={() => run(() => markUnpaid(invoice.id))} disabled={busy}>
+            Mark as unpaid
           </Button>
         )}
       </div>

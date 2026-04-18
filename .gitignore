@@ -1,5 +1,11 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Playwright auth session (contains session cookies — never commit)
+auth_state.json
+
+# Playwright MCP session artifacts (logs, screenshots, snapshots)
+.playwright-mcp/
+
 # dependencies
 /node_modules
 /.pnp

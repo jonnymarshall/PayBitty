@@ -11,7 +11,8 @@ const VALID_DRAFT = {
   client_name: "Acme Corp",
   client_email: "acme@example.com",
   line_items: [{ description: "Work", quantity: 1, unit_price: 1000 }],
-  tax_fiat: 0,
+  tax_percent: 0,
+  accepts_bitcoin: true,
   btc_address: "bc1qtest",
   due_date: "2026-06-01",
 };
@@ -96,7 +97,7 @@ describe("publishInvoice", () => {
 
   it("throws if the BTC address is already used on an active invoice", async () => {
     makeSupabase({
-      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qused" },
+      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qused", accepts_bitcoin: true },
       btcConflict: { id: "inv-other", status: "pending" },
     });
     await expect(publishInvoice("inv-1")).rejects.toThrow(/btc address/i);

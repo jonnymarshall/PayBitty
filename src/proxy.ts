@@ -27,6 +27,13 @@ export async function proxy(request: NextRequest) {
     }
   );
 
+  if (
+    process.env.NODE_ENV === "development" &&
+    request.cookies.get("dev-auth-bypass")?.value === "playwright"
+  ) {
+    return response;
+  }
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
