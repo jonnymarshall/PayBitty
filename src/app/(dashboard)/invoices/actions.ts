@@ -11,7 +11,7 @@ export interface InvoicePayload {
   your_company?: string;
   your_address?: string;
   your_tax_id?: string;
-  client_name: string;
+  client_name?: string;
   client_email?: string;
   client_company?: string;
   client_address?: string;
@@ -36,12 +36,12 @@ export async function saveDraft(payload: InvoicePayload) {
       user_id: user!.id,
       invoice_number: payload.invoice_number || null,
       your_name: payload.your_name || null,
-      your_email: payload.your_email || null,
+      your_email: payload.your_email ?? "",
       your_company: payload.your_company || null,
       your_address: payload.your_address || null,
       your_tax_id: payload.your_tax_id || null,
-      client_name: payload.client_name,
-      client_email: payload.client_email || null,
+      client_name: payload.client_name ?? "",
+      client_email: payload.client_email ?? "",
       client_company: payload.client_company || null,
       client_address: payload.client_address || null,
       client_tax_id: payload.client_tax_id || null,
@@ -85,12 +85,12 @@ export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
     .update({
       invoice_number: payload.invoice_number || null,
       your_name: payload.your_name || null,
-      your_email: payload.your_email || null,
+      your_email: payload.your_email ?? "",
       your_company: payload.your_company || null,
       your_address: payload.your_address || null,
       your_tax_id: payload.your_tax_id || null,
-      client_name: payload.client_name,
-      client_email: payload.client_email || null,
+      client_name: payload.client_name ?? "",
+      client_email: payload.client_email ?? "",
       client_company: payload.client_company || null,
       client_address: payload.client_address || null,
       client_tax_id: payload.client_tax_id || null,
@@ -187,6 +187,28 @@ export async function deleteDraft(invoiceId: string) {
   const { error } = await supabase.from("invoices").delete().eq("id", invoiceId);
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
+}
+
+export async function markUnpaid(invoiceId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: invoice } = await supabase
+    .from("invoices")
+    .select("user_id")
+    .eq("id", invoiceId)
+    .single();
+
+  if (!invoice || invoice.user_id !== user!.id) throw new Error("Invoice not found");
+
+  const { error } = await supabase
+    .from("invoices")
+    .update({ status: "pending" })
+    .eq("id", invoiceId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+  revalidatePath(`/invoices/${invoiceId}`);
 }
 
 export async function markOverdue(invoiceId: string) {

@@ -29,18 +29,15 @@ export default async function InvoiceDetailPage({
   const shareLink = `${appUrl}/invoice/${invoice.id}`;
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="max-w-2xl mx-auto space-y-8">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/invoices" className="text-sm text-muted-foreground hover:text-foreground">
             ← Invoices
           </Link>
-          <div className="mt-2 flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{invoice.client_name}</h1>
-            {invoice.invoice_number && (
-              <span className="text-sm text-muted-foreground font-mono">{invoice.invoice_number}</span>
-            )}
+          <div className="mt-2">
+            <h1 className="text-2xl font-semibold">{invoice.invoice_number || "Invoice"}</h1>
           </div>
           {invoice.client_email && (
             <p className="text-sm text-muted-foreground">{invoice.client_email}</p>
@@ -62,7 +59,7 @@ export default async function InvoiceDetailPage({
           </div>
           <div className="space-y-0.5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Bill To</p>
-            <p className="font-medium">{invoice.client_name}</p>
+            {invoice.client_name && <p className="font-medium">{invoice.client_name}</p>}
             {invoice.client_company && <p className="text-muted-foreground">{invoice.client_company}</p>}
             {invoice.client_email && <p className="text-muted-foreground">{invoice.client_email}</p>}
             {invoice.client_address && <p className="text-muted-foreground">{invoice.client_address}</p>}

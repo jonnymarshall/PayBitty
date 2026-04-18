@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/date-picker";
@@ -59,31 +59,58 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
   const [form, setForm] = useState<FormState>({ ...DEFAULT_STATE, ...initialValues });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const initialFormRef = useRef(JSON.stringify({ ...DEFAULT_STATE, ...initialValues }));
+
+  // Raw string display values for qty/unit_price so "0" and "" are distinct
+  const [rawAmounts, setRawAmounts] = useState<{ quantity: string; unit_price: string }[]>(() =>
+    (initialValues?.line_items ?? DEFAULT_STATE.line_items).map((item) => ({
+      quantity: item.quantity !== 0 ? String(item.quantity) : "",
+      unit_price: item.unit_price !== 0 ? String(item.unit_price) : "",
+    }))
+  );
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function updateItem(index: number, field: keyof LineItem, raw: string) {
-    setForm((prev) => {
-      const items = [...prev.line_items];
-      if (field === "description") {
-        items[index] = { ...items[index], description: raw };
-      } else {
+    if (field === "quantity" || field === "unit_price") {
+      setRawAmounts((prev) => {
+        const next = [...prev];
+        next[index] = { ...next[index], [field]: raw };
+        return next;
+      });
+      setForm((prev) => {
+        const items = [...prev.line_items];
         const n = raw === "" ? 0 : parseFloat(raw);
         items[index] = { ...items[index], [field]: isNaN(n) ? 0 : n };
-      }
-      return { ...prev, line_items: items };
-    });
+        return { ...prev, line_items: items };
+      });
+    } else {
+      setForm((prev) => {
+        const items = [...prev.line_items];
+        items[index] = { ...items[index], description: raw };
+        return { ...prev, line_items: items };
+      });
+    }
   }
 
   function addItem() {
     set("line_items", [...form.line_items, { description: "", quantity: 1, unit_price: 0 }]);
+    setRawAmounts((prev) => [...prev, { quantity: "1", unit_price: "" }]);
   }
 
   function removeItem(i: number) {
     set("line_items", form.line_items.filter((_, idx) => idx !== i));
+    setRawAmounts((prev) => prev.filter((_, idx) => idx !== i));
   }
+
+  const errorFieldIds: Record<string, string> = {
+    invoice_number: "input-invoice-number",
+    your_email: "input-your-email",
+    client_email: "input-client-email",
+    btc_address: "input-btc-address",
+  };
 
   function validate(): boolean {
     const errs: Record<string, string> = {};
@@ -92,6 +119,11 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
     if (form.invoice_number && form.invoice_number.length > 50) errs.invoice_number = "Max 50 characters";
     if (form.accepts_bitcoin && !form.btc_address.trim()) errs.btc_address = "BTC address required when Bitcoin is enabled";
     setErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      const firstKey = Object.keys(errs)[0];
+      const elId = errorFieldIds[firstKey];
+      if (elId) document.getElementById(elId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     return Object.keys(errs).length === 0;
   }
 
@@ -103,7 +135,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       your_company: form.your_company || undefined,
       your_address: form.your_address || undefined,
       your_tax_id: form.your_tax_id || undefined,
-      client_name: form.client_name || "Unnamed",
+      client_name: form.client_name || undefined,
       client_email: form.client_email || undefined,
       client_company: form.client_company || undefined,
       client_address: form.client_address || undefined,
@@ -160,111 +192,142 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
   const taxPct = parseFloat(form.tax_percent) || 0;
   const { subtotal, taxFiat, total } = computeInvoiceTotals(form.line_items, taxPct);
 
+  function handleCancel() {
+    const isDirty = JSON.stringify(form) !== initialFormRef.current;
+    if (isDirty) {
+      if (!window.confirm("You have unsaved changes. Discard and go back?")) return;
+    }
+    router.back();
+  }
+
   return (
-    <div className="space-y-8">
+    <div id="form-invoice" className="space-y-8">
       {errors._form && (
-        <div className="rounded-md bg-primary/10 border border-primary/30 px-4 py-3 text-sm text-primary">
+        <div id="form-error" className="rounded-md bg-primary/10 border border-primary/30 px-4 py-3 text-sm text-primary">
           {errors._form}
         </div>
       )}
 
       {/* Invoice number */}
-      <Field label="Invoice number" error={errors.invoice_number}>
-        <input
-          type="text"
-          maxLength={50}
-          value={form.invoice_number}
-          onChange={(e) => set("invoice_number", e.target.value)}
-          className={`${inputCls} max-w-xs`}
-          placeholder="e.g. INV-001"
-        />
-      </Field>
+      <section id="section-invoice-number">
+        <Field label="Invoice number" error={errors.invoice_number}>
+          <input
+            id="input-invoice-number"
+            type="text"
+            maxLength={50}
+            value={form.invoice_number}
+            onChange={(e) => set("invoice_number", e.target.value)}
+            className={`${inputCls} max-w-xs`}
+            placeholder="e.g. INV-001"
+          />
+        </Field>
+      </section>
 
       {/* YOU / CLIENT split */}
-      <div className="grid grid-cols-2 gap-8 relative">
-        <div className="absolute inset-y-0 left-1/2 w-px bg-border -translate-x-1/2" />
-        <section className="space-y-4">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">You</h2>
+      <div id="section-parties" className="grid grid-cols-2" style={{ columnGap: "3rem" }}>
+        <section id="section-you" className="space-y-2 border-r border-border" style={{ paddingRight: "2.5rem" }}>
+          <h2 id="heading-you" className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">You</h2>
           <Field label="Name">
-            <input type="text" value={form.your_name} onChange={(e) => set("your_name", e.target.value)} className={inputCls} />
+            <input id="input-your-name" type="text" value={form.your_name} onChange={(e) => set("your_name", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Email" error={errors.your_email}>
-            <input type="email" value={form.your_email} onChange={(e) => set("your_email", e.target.value)} className={inputCls} />
+            <input id="input-your-email" type="email" value={form.your_email} onChange={(e) => set("your_email", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Company">
-            <input type="text" value={form.your_company} onChange={(e) => set("your_company", e.target.value)} className={inputCls} />
+            <input id="input-your-company" type="text" value={form.your_company} onChange={(e) => set("your_company", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Address">
-            <input type="text" value={form.your_address} onChange={(e) => set("your_address", e.target.value)} className={inputCls} />
+            <input id="input-your-address" type="text" value={form.your_address} onChange={(e) => set("your_address", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Tax ID">
-            <input type="text" value={form.your_tax_id} onChange={(e) => set("your_tax_id", e.target.value)} className={inputCls} />
+            <input id="input-your-tax-id" type="text" value={form.your_tax_id} onChange={(e) => set("your_tax_id", e.target.value)} className={inputCls} />
           </Field>
         </section>
 
-        <section className="space-y-4">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Client</h2>
+        <section id="section-client" className="space-y-2" style={{ paddingLeft: "2.5rem" }}>
+          <h2 id="heading-client" className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Client</h2>
           <Field label="Name" error={errors.client_name}>
-            <input type="text" value={form.client_name} onChange={(e) => set("client_name", e.target.value)} className={inputCls} />
+            <input id="input-client-name" type="text" value={form.client_name} onChange={(e) => set("client_name", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Email" error={errors.client_email}>
-            <input type="email" value={form.client_email} onChange={(e) => set("client_email", e.target.value)} className={inputCls} />
+            <input id="input-client-email" type="email" value={form.client_email} onChange={(e) => set("client_email", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Company">
-            <input type="text" value={form.client_company} onChange={(e) => set("client_company", e.target.value)} className={inputCls} />
+            <input id="input-client-company" type="text" value={form.client_company} onChange={(e) => set("client_company", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Address">
-            <input type="text" value={form.client_address} onChange={(e) => set("client_address", e.target.value)} className={inputCls} />
+            <input id="input-client-address" type="text" value={form.client_address} onChange={(e) => set("client_address", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Tax ID">
-            <input type="text" value={form.client_tax_id} onChange={(e) => set("client_tax_id", e.target.value)} className={inputCls} />
+            <input id="input-client-tax-id" type="text" value={form.client_tax_id} onChange={(e) => set("client_tax_id", e.target.value)} className={inputCls} />
           </Field>
         </section>
       </div>
 
       {/* Line items */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Line Items</h2>
+      <section id="section-line-items" className="space-y-3">
+        <h2 id="heading-line-items" className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Line Items</h2>
 
-        {/* Header row */}
-        <div className="flex gap-3">
-          <span className="flex-1 min-w-0 text-sm font-medium">Description</span>
-          <span className="w-20 shrink-0 text-sm font-medium">Qty</span>
-          <span className="w-28 shrink-0 text-sm font-medium">Unit price</span>
-          <span className="w-8 shrink-0" />
-        </div>
-
-        <div className="space-y-2">
+        <div id="line-items-list" className="space-y-2">
           {form.line_items.map((item, i) => (
-            <div key={i} className="flex gap-3 items-center">
-              <input
-                type="text"
-                value={item.description}
-                onChange={(e) => updateItem(i, "description", e.target.value)}
-                className={`${inputBase} flex-1 min-w-0`}
-                placeholder="e.g. Design work"
-              />
-              <input
-                type="number"
-                value={item.quantity === 0 ? "" : item.quantity}
-                onChange={(e) => updateItem(i, "quantity", e.target.value)}
-                max={100000}
-                step="any"
-                className={`${inputBase} ${noSpinner} w-20 shrink-0`}
-                placeholder="1"
-              />
-              <input
-                type="number"
-                value={item.unit_price === 0 ? "" : item.unit_price}
-                onChange={(e) => updateItem(i, "unit_price", e.target.value)}
-                max={1000000000}
-                step="any"
-                className={`${inputBase} ${noSpinner} w-28 shrink-0`}
-                placeholder="0.00"
-              />
-              <div className="w-8 shrink-0 flex justify-center">
+            <div key={i} id={`line-item-${i}`} className="flex items-end" style={{ gap: "0.75rem" }}>
+              {/* Description column: label + input in same div, label only on first row */}
+              <div id={`line-item-${i}-description`} className="flex-1 min-w-0 space-y-1.5">
+                {i === 0 && (
+                  <label id="label-line-item-description" htmlFor="input-line-item-0-description" className="text-sm font-medium">
+                    Description
+                  </label>
+                )}
+                <input
+                  id={`input-line-item-${i}-description`}
+                  type="text"
+                  value={item.description}
+                  onChange={(e) => updateItem(i, "description", e.target.value)}
+                  className={`w-full ${inputBase}`}
+                  placeholder="e.g. Design work"
+                />
+              </div>
+
+              {/* Qty column */}
+              <div id={`line-item-${i}-qty`} className="shrink-0 space-y-1.5" style={{ width: "5rem" }}>
+                {i === 0 && (
+                  <label id="label-line-item-qty" htmlFor="input-line-item-0-qty" className="text-sm font-medium">
+                    Qty
+                  </label>
+                )}
+                <input
+                  id={`input-line-item-${i}-qty`}
+                  type="text"
+                  inputMode="decimal"
+                  value={rawAmounts[i]?.quantity ?? ""}
+                  onChange={(e) => updateItem(i, "quantity", e.target.value)}
+                  className={`w-full ${inputBase}`}
+                />
+              </div>
+
+              {/* Unit price column */}
+              <div id={`line-item-${i}-unit-price`} className="shrink-0 space-y-1.5" style={{ width: "7rem" }}>
+                {i === 0 && (
+                  <label id="label-line-item-unit-price" htmlFor="input-line-item-0-unit-price" className="text-sm font-medium">
+                    Unit price
+                  </label>
+                )}
+                <input
+                  id={`input-line-item-${i}-unit-price`}
+                  type="text"
+                  inputMode="decimal"
+                  value={rawAmounts[i]?.unit_price ?? ""}
+                  onChange={(e) => updateItem(i, "unit_price", e.target.value)}
+                  className={`w-full ${inputBase}`}
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Remove button column */}
+              <div id={`line-item-${i}-actions`} className="shrink-0 flex justify-center" style={{ width: "2rem" }}>
                 {form.line_items.length > 1 && (
                   <button
+                    id={`btn-line-item-${i}-remove`}
                     type="button"
                     onClick={() => removeItem(i)}
                     className="h-9 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors text-lg"
@@ -276,58 +339,59 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
             </div>
           ))}
         </div>
-        <button type="button" onClick={addItem} className="text-sm text-primary hover:underline">
+
+        <button id="btn-add-line-item" type="button" onClick={addItem} className="text-sm text-primary hover:underline">
           + Add line item
         </button>
       </section>
 
       {/* Tax */}
-      <Field label="Tax">
-        <div className="flex items-center w-36">
+      <section id="section-tax">
+        <Field label="Tax (%)">
           <input
-            type="number"
-            min={0}
-            max={100}
-            step="any"
+            id="input-tax-percent"
+            type="text"
+            inputMode="decimal"
             value={form.tax_percent}
             onChange={(e) => set("tax_percent", e.target.value)}
             placeholder="0"
-            className={`${inputCls} ${noSpinner} rounded-r-none border-r-0 flex-1`}
+            className={`${inputCls} max-w-[6rem]`}
           />
-          <span className="h-9 px-3 flex items-center border border-input rounded-r-md text-sm text-muted-foreground bg-muted/30 select-none shrink-0">
-            %
-          </span>
-        </div>
-      </Field>
+        </Field>
+      </section>
 
       {/* Due date */}
-      <Field label="Due date">
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.no_due_date}
-              onChange={(e) => set("no_due_date", e.target.checked)}
-              className="rounded border-border"
-            />
-            No due date
-          </label>
-          {!form.no_due_date && (
-            <div className="max-w-xs">
-              <DatePicker
-                value={form.due_date}
-                onChange={(d) => set("due_date", d)}
-                placeholder="Select due date"
+      <section id="section-due-date">
+        <Field label="Due date">
+          <div className="space-y-2">
+            <label id="label-no-due-date" htmlFor="input-no-due-date" className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+              <input
+                id="input-no-due-date"
+                type="checkbox"
+                checked={form.no_due_date}
+                onChange={(e) => set("no_due_date", e.target.checked)}
+                className="rounded border-border"
               />
-            </div>
-          )}
-        </div>
-      </Field>
+              No due date
+            </label>
+            {!form.no_due_date && (
+              <div id="due-date-picker" className="max-w-xs">
+                <DatePicker
+                  value={form.due_date}
+                  onChange={(d) => set("due_date", d)}
+                  placeholder="Select due date"
+                />
+              </div>
+            )}
+          </div>
+        </Field>
+      </section>
 
       {/* Bitcoin */}
-      <section className="space-y-3">
-        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+      <section id="section-bitcoin" className="space-y-3">
+        <label id="label-accepts-bitcoin" htmlFor="input-accepts-bitcoin" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
           <input
+            id="input-accepts-bitcoin"
             type="checkbox"
             checked={form.accepts_bitcoin}
             onChange={(e) => set("accepts_bitcoin", e.target.checked)}
@@ -336,55 +400,66 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
           Accept Bitcoin payment
         </label>
         {form.accepts_bitcoin && (
-          <Field label="BTC address" error={errors.btc_address}>
-            <input
-              type="text"
-              value={form.btc_address}
-              onChange={(e) => set("btc_address", e.target.value)}
-              className={inputCls}
-              placeholder="bc1q…"
-            />
-          </Field>
+          <div id="section-btc-address">
+            <Field label="BTC address" error={errors.btc_address}>
+              <input
+                id="input-btc-address"
+                type="text"
+                value={form.btc_address}
+                onChange={(e) => set("btc_address", e.target.value)}
+                className={inputCls}
+                placeholder="bc1q…"
+              />
+            </Field>
+          </div>
         )}
       </section>
 
       {/* Access code */}
-      <Field label="Access code (Optional)">
-        <input
-          type="text"
-          value={form.access_code}
-          onChange={(e) => set("access_code", e.target.value.toUpperCase().slice(0, 16))}
-          className={`${inputCls} max-w-[200px] font-mono tracking-widest`}
-          placeholder="e.g. MYCODE01"
-        />
-        <p className="text-xs text-muted-foreground">Leave blank for no access code — anyone with the link can view.</p>
-      </Field>
+      <section id="section-access-code">
+        <Field label="Access code (Optional)">
+          <input
+            id="input-access-code"
+            type="text"
+            value={form.access_code}
+            onChange={(e) => set("access_code", e.target.value.toUpperCase().slice(0, 16))}
+            className={`${inputCls} max-w-[200px] font-mono tracking-widest`}
+            placeholder="e.g. MYCODE01"
+          />
+          <p id="hint-access-code" className="text-xs text-muted-foreground">Leave blank for no access code — anyone with the link can view.</p>
+        </Field>
+      </section>
 
       {/* Totals */}
-      <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5 text-sm">
-        <div className="flex justify-between text-muted-foreground">
+      <div id="section-totals" className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5 text-sm">
+        <div id="row-subtotal" className="flex justify-between text-muted-foreground">
           <span>Subtotal</span>
-          <span>${subtotal.toFixed(2)}</span>
+          <span id="value-subtotal">${subtotal.toFixed(2)}</span>
         </div>
         {taxPct > 0 && (
-          <div className="flex justify-between text-muted-foreground">
+          <div id="row-tax" className="flex justify-between text-muted-foreground">
             <span>Tax ({taxPct}%)</span>
-            <span>${taxFiat.toFixed(2)}</span>
+            <span id="value-tax">${taxFiat.toFixed(2)}</span>
           </div>
         )}
-        <div className="flex justify-between font-semibold text-base pt-1 border-t border-border">
+        <div id="row-total" className="flex justify-between font-semibold text-base pt-1 border-t border-border">
           <span>Total</span>
-          <span>${total.toFixed(2)} USD</span>
+          <span id="value-total">${total.toFixed(2)} USD</span>
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <Button variant="outline" onClick={handleSaveDraft} disabled={saving}>
+      <div id="section-actions" className="flex gap-3">
+        <Button id="btn-save-draft" variant="outline" onClick={handleSaveDraft} disabled={saving}>
           Save draft
         </Button>
-        <Button onClick={handlePublish} disabled={saving}>
+        <Button id="btn-publish" onClick={handlePublish} disabled={saving}>
           Publish invoice
         </Button>
+        {invoiceId && (
+          <Button id="btn-cancel" variant="outline" type="button" onClick={handleCancel} disabled={saving}>
+            Cancel
+          </Button>
+        )}
       </div>
     </div>
   );

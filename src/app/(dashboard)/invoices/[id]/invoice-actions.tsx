@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { deleteDraft, markOverdue, markPaid, publishInvoice } from "../actions";
+import { deleteDraft, markOverdue, markPaid, markUnpaid, publishInvoice } from "../actions";
 
 interface Invoice {
   id: string;
@@ -74,6 +74,11 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
         {invoice.status === "payment_detected" && (
           <Button onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
             Confirm paid
+          </Button>
+        )}
+        {invoice.status === "paid" && (
+          <Button variant="outline" onClick={() => run(() => markUnpaid(invoice.id))} disabled={busy}>
+            Mark as unpaid
           </Button>
         )}
       </div>

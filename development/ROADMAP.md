@@ -98,9 +98,81 @@
 
 ---
 
+### ✅ v1.1.3 — Invoice Form Layout & Validation Fixes
+
+**Branch:** `fix/invoice-form-improvements` (continued)
+
+**Layout**
+- [x] Fix YOU/CLIENT sections — columns side-by-side with centred divider and clear gap (inline styles to work around Tailwind v4 gap/padding generation bug)
+- [x] Line items: column headers (Description, Qty, Unit price) in same div as their inputs — mirrors Field pattern, labels only on first row, subsequent rows align underneath
+- [x] Line items: use inline `gap` style so column widths are consistent across all rows
+- [x] Dynamic page title — reverted; title stays as static "New Invoice" / "Edit Invoice"
+- [x] Remove Tax % suffix element — label now reads "Tax (%)" instead
+
+**Validation & input behaviour**
+- [x] Email validation: only validates format if an email is entered; blank is allowed for both sender and client
+- [x] Allow "0" as a valid quantity or unit price (tracked as raw string; zero no longer collapses to empty display)
+- [x] Invoice number: max 50 characters enforced via `maxLength` attribute and validation
+- [x] Qty field: no placeholder after deletion — field is blank when empty, no greyed "1" re-appearing
+- [x] Qty / Unit price inputs changed to `type="text" inputMode="decimal"` — eliminates spinners, scroll-wheel changes, and arrow-key increments entirely
+- [x] Tax input likewise changed to `type="text" inputMode="decimal"`
+- [x] Fix `client_email` / `your_email` NOT NULL constraint — send empty string instead of null when blank
+- [x] New line items added via "+ Add line item" now prefill qty with "1" (matching the initial row)
+
+**Done when:** YOU and CLIENT sit side by side with a centre divider; column headers align with their inputs; all input behaviour matches spec above.
+
+---
+
+### ✅ v1.1.4 — Invoice UX Polish
+
+**Branch:** `fix/invoice-form-improvements` (continued)
+
+**Routing**
+- [x] `/invoices` route shows the invoice list (same as `/dashboard`); `/dashboard` redirects to `/invoices`
+
+**Invoice form**
+- [x] Remove `heading-invoice-title` element from the invoice form — title lives on the page, not inside the form component
+- [x] Close vertical space between field rows within YOU and CLIENT sections
+- [x] Scroll page to first failed validation field when a form submission fails validation
+- [x] Stop `client_name` defaulting to "Unnamed" when left blank — allow empty
+- [x] Cancel button at the bottom of the edit invoice form; if the form is dirty, show a confirmation modal before discarding changes
+
+**Invoice detail page**
+- [x] Fix centering — detail page content is left-aligned within the wide layout container; add `mx-auto`
+- [x] Replace client name in the large header with the invoice number; remove the smaller inline invoice number beside it
+- [x] Add "Mark as unpaid" action for paid invoices (reverts status to pending)
+
+**Done when:** All items above are checked off.
+
+---
+
+### ⏳ v1.1.5 — Form Validation, Nav & Date Picker
+
+**Branch:** `fix/invoice-form-improvements` (continued)
+
+**Routing & nav**
+- [ ] Navbar "Paybitty" logo text links to home (`/invoices`)
+
+**Form validation hardening**
+- [ ] Qty field: enforce max 100,000 and max 2 decimal places (validate on submit, not on keystroke)
+- [ ] Unit price field: enforce max 1,000,000,000 and max 2 decimal places (validate on submit)
+
+**Date picker**
+- [ ] Replace current narrow date picker with the correctly-sized shadcn date picker matching the component docs (proper popover width, calendar styling)
+
+**ID coverage**
+- [ ] Create a reusable `add-ids` skill that audits the UI and adds appropriately named `id` attributes to all key elements
+- [ ] Run the skill across all pages and components so every interactive and structural element has a stable ID
+
+**Done when:** Nav logo navigates home, validation rejects out-of-range qty/price, date picker matches shadcn docs, all key elements have IDs.
+
+---
+
 ### ⏳ v1.2 — Client Payment View + BTC QR Code
 
 **Branch:** `v1.2/client-payment-view`
+
+> Note: `/invoice/[id]` currently shows a "Client payment view coming soon" stub. This branch replaces it with the full implementation.
 
 - [ ] Public route `/invoice/[id]` with access code gate
 - [ ] BTC price fetching API: `GET /api/btc-price?currency=USD` (Coinbase primary, CoinGecko fallback, ~60s server-side cache)
@@ -140,6 +212,26 @@
 - [ ] PDF download available from invoice detail view
 
 **Done when:** All transactional emails send correctly and PDFs are downloadable.
+
+---
+
+### ⏳ v1.5 — Design System Overhaul
+
+**Branch:** `v1.5/design-system`
+
+> **Block:** Colour scheme decision needed from you before implementation begins. See notes below.
+
+**Colour scheme**
+- [ ] DECISION: You to choose new colour scheme — current palette (near-black bg, dark surface, red `#DE3C4B` accent) lacks visual variety and makes it hard to differentiate button intent (e.g. primary action vs destructive vs secondary). New scheme should include at least one additional highlight colour and provide enough contrast between action types.
+- [ ] Implement new colour scheme across CSS variables / Tailwind config
+- [ ] Audit all buttons and badges to ensure each action type (primary, secondary, destructive, neutral) is visually distinct under the new scheme
+
+**Light / dark mode**
+- [ ] Add dark/light mode toggle to the navbar
+- [ ] Ensure all components render correctly in both modes (Tailwind `dark:` variants)
+- [ ] Persist mode preference to `localStorage`
+
+**Done when:** Colour scheme decision is made and implemented, all button states are visually distinct, and both dark and light mode work correctly throughout the app.
 
 ---
 
@@ -202,4 +294,4 @@
 
 - Billing (v2.0+) is fully deferred until v1 is stable and in use.
 - xpub / HD wallet support is permanently rejected — security risk if the key leaks.
-- Light mode is optional and not scheduled.
+- Light mode and colour scheme overhaul are tracked in v1.5.
