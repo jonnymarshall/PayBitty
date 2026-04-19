@@ -146,23 +146,23 @@
 
 ---
 
-### ⏳ v1.1.5 — Form Validation, Nav & Date Picker
+### ✅ v1.1.5 — Form Validation, Nav & Date Picker
 
 **Branch:** `fix/invoice-form-improvements` (continued)
 
 **Routing & nav**
-- [ ] Navbar "Paybitty" logo text links to home (`/invoices`)
+- [x] Navbar "Paybitty" logo text links to home (`/invoices`)
 
 **Form validation hardening**
-- [ ] Qty field: enforce max 100,000 and max 2 decimal places (validate on submit, not on keystroke)
-- [ ] Unit price field: enforce max 1,000,000,000 and max 2 decimal places (validate on submit)
+- [x] Qty field: enforce max 100,000 and max 2 decimal places (validate on submit, not on keystroke)
+- [x] Unit price field: enforce max 1,000,000,000 and max 2 decimal places (validate on submit)
 
 **Date picker**
-- [ ] Replace current narrow date picker with the correctly-sized shadcn date picker matching the component docs (proper popover width, calendar styling)
+- [x] Replace current narrow date picker with the correctly-sized shadcn date picker matching the component docs (proper popover width, calendar styling)
 
 **ID coverage**
-- [ ] Create a reusable `add-ids` skill that audits the UI and adds appropriately named `id` attributes to all key elements
-- [ ] Run the skill across all pages and components so every interactive and structural element has a stable ID
+- [x] Create a reusable `add-ids` skill that audits the UI and adds appropriately named `id` attributes to all key elements
+- [x] Run the skill across all pages and components so every interactive and structural element has a stable ID
 
 **Done when:** Nav logo navigates home, validation rejects out-of-range qty/price, date picker matches shadcn docs, all key elements have IDs.
 
