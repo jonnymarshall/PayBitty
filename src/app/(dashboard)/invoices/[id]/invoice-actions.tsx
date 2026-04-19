@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { deleteDraft, markOverdue, markPaid, markUnpaid, publishInvoice } from "../actions";
+import { parseServerError } from "@/lib/invoices";
 
 interface Invoice {
   id: string;
@@ -23,7 +24,7 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
       await fn();
       router.refresh();
     } catch (e) {
-      setError((e as Error).message);
+      setError(parseServerError((e as Error).message).message);
     } finally {
       setBusy(false);
     }

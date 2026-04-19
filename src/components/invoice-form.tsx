@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/date-picker";
 import { saveDraft, updateDraft, publishInvoice, InvoicePayload } from "@/app/(dashboard)/invoices/actions";
-import { computeInvoiceTotals, isValidEmail, LineItem } from "@/lib/invoices";
+import { computeInvoiceTotals, isValidEmail, parseServerError, LineItem } from "@/lib/invoices";
 
 interface InvoiceFormProps {
   invoiceId?: string;
@@ -197,13 +197,12 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       await publishInvoice(id!);
       router.push(`/invoices/${id}`);
     } catch (e) {
-      const msg = (e as Error).message;
-      if (msg.startsWith("btc_address: ")) {
-        const fieldMsg = msg.slice("btc_address: ".length);
-        setErrors({ btc_address: fieldMsg });
-        document.getElementById(errorFieldIds.btc_address)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const { field, message } = parseServerError((e as Error).message);
+      if (field && field in errorFieldIds) {
+        setErrors({ [field]: message });
+        document.getElementById(errorFieldIds[field])?.scrollIntoView({ behavior: "smooth", block: "center" });
       } else {
-        setErrors({ _form: msg });
+        setErrors({ _form: message });
       }
     } finally {
       setSaving(false);
