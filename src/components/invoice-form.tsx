@@ -224,7 +224,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       </section>
 
       {/* YOU / CLIENT split */}
-      <div id="section-parties" className="grid grid-cols-2" style={{ columnGap: "3rem" }}>
+      <div id="section-parties" className="grid grid-cols-2">
         <section id="section-you" className="space-y-2 border-r border-border" style={{ paddingRight: "2.5rem" }}>
           <h2 id="heading-you" className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">You</h2>
           <Field label="Name">
@@ -330,7 +330,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
                     id={`btn-line-item-${i}-remove`}
                     type="button"
                     onClick={() => removeItem(i)}
-                    className="h-9 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors text-lg"
+                    className="h-9 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors text-lg cursor-pointer"
                   >
                     ×
                   </button>
@@ -340,7 +340,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
           ))}
         </div>
 
-        <button id="btn-add-line-item" type="button" onClick={addItem} className="text-sm text-primary hover:underline">
+        <button id="btn-add-line-item" type="button" onClick={addItem} className="text-sm text-primary hover:underline cursor-pointer">
           + Add line item
         </button>
       </section>
@@ -483,8 +483,8 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
-      {label && <label className="text-sm font-medium">{label}</label>}
+    <div className="flex flex-col gap-2">
+      {label && <label className="block text-sm font-medium">{label}</label>}
       {children}
       {error && <p className="text-xs text-primary">{error}</p>}
     </div>

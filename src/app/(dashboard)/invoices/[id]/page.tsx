@@ -113,6 +113,14 @@ export default async function InvoiceDetailPage({
         </div>
       </section>
 
+      {/* Bitcoin address */}
+      {invoice.accepts_bitcoin && invoice.btc_address && (
+        <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Bitcoin Address</p>
+          <code className="block text-xs break-all">{invoice.btc_address}</code>
+        </div>
+      )}
+
       {/* Totals */}
       <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5 text-sm">
         <div className="flex justify-between text-muted-foreground">
