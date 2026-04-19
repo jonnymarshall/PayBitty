@@ -131,12 +131,15 @@ export async function publishInvoice(invoiceId: string) {
   if (invoice.accepts_bitcoin && invoice.btc_address) {
     const { data: conflict } = await supabase
       .from("invoices")
-      .select("id")
+      .select("id, invoice_number")
       .eq("btc_address", invoice.btc_address)
       .eq("status", "pending")
       .maybeSingle();
 
-    if (conflict) throw new Error("BTC address is already used on an active invoice");
+    if (conflict) {
+      const ref = conflict.invoice_number ? `invoice ${conflict.invoice_number}` : "another active invoice";
+      throw new Error(`btc_address: This bitcoin address has already been used on ${ref}. Please provide a unique address.`);
+    }
   }
 
   const { error } = await supabase

@@ -53,7 +53,7 @@ function makeSupabase({
   const fetchIdEq = vi.fn().mockReturnValue({ single: fetchSingle });
 
   const selectChain = vi.fn((cols: string) =>
-    cols === "id"
+    cols === "id, invoice_number"
       ? { eq: uniqAddressEq }
       : { eq: fetchIdEq }
   );
@@ -100,7 +100,7 @@ describe("publishInvoice", () => {
       fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qused", accepts_bitcoin: true },
       btcConflict: { id: "inv-other", status: "pending" },
     });
-    await expect(publishInvoice("inv-1")).rejects.toThrow(/btc address/i);
+    await expect(publishInvoice("inv-1")).rejects.toThrow(/btc_address: This bitcoin address/i);
   });
 });
 

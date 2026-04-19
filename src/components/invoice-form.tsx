@@ -197,7 +197,14 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
       await publishInvoice(id!);
       router.push(`/invoices/${id}`);
     } catch (e) {
-      setErrors({ _form: (e as Error).message });
+      const msg = (e as Error).message;
+      if (msg.startsWith("btc_address: ")) {
+        const fieldMsg = msg.slice("btc_address: ".length);
+        setErrors({ btc_address: fieldMsg });
+        document.getElementById(errorFieldIds.btc_address)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        setErrors({ _form: msg });
+      }
     } finally {
       setSaving(false);
     }
