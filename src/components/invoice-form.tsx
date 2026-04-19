@@ -73,8 +73,22 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  const QTY_MAX = 100_000;
+  const UNIT_PRICE_MAX = 1_000_000_000;
+
+  function isValidAmountInput(raw: string, maxValue: number): boolean {
+    if (raw === "" || raw === "-" || raw.endsWith(".")) return true;
+    const dotIndex = raw.indexOf(".");
+    if (dotIndex !== -1 && raw.length - dotIndex - 1 > 2) return false;
+    const n = parseFloat(raw);
+    if (isNaN(n) || n < 0 || n > maxValue) return false;
+    return true;
+  }
+
   function updateItem(index: number, field: keyof LineItem, raw: string) {
     if (field === "quantity" || field === "unit_price") {
+      const maxValue = field === "quantity" ? QTY_MAX : UNIT_PRICE_MAX;
+      if (!isValidAmountInput(raw, maxValue)) return;
       setRawAmounts((prev) => {
         const next = [...prev];
         next[index] = { ...next[index], [field]: raw };
