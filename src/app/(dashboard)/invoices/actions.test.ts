@@ -43,11 +43,12 @@ function makeSupabase({
   const deleteChain = vi.fn().mockReturnValue({ eq: deleteEq });
 
   // select chain: differentiate by column list
-  //   select("*")  → fetch by id → .eq(id).single()
-  //   select("id") → uniqueness  → .eq(address).eq(status).maybeSingle()
+  //   select("*")          → fetch by id → .eq(id).single()
+  //   select("id, invoice_number") → uniqueness → .eq(address).neq(status).neq(id).maybeSingle()
   const maybeSingle = vi.fn().mockResolvedValue({ data: btcConflict, error: null });
-  const uniqStatusEq = vi.fn().mockReturnValue({ maybeSingle });
-  const uniqAddressEq = vi.fn().mockReturnValue({ eq: uniqStatusEq });
+  const uniqIdNeq = vi.fn().mockReturnValue({ maybeSingle });
+  const uniqStatusNeq = vi.fn().mockReturnValue({ neq: uniqIdNeq });
+  const uniqAddressEq = vi.fn().mockReturnValue({ neq: uniqStatusNeq });
 
   const fetchSingle = vi.fn().mockResolvedValue({ data: fetchData, error: null });
   const fetchIdEq = vi.fn().mockReturnValue({ single: fetchSingle });

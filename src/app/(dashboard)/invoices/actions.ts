@@ -133,7 +133,8 @@ export async function publishInvoice(invoiceId: string) {
       .from("invoices")
       .select("id, invoice_number")
       .eq("btc_address", invoice.btc_address)
-      .eq("status", "pending")
+      .neq("status", "draft")
+      .neq("id", invoiceId)
       .maybeSingle();
 
     if (conflict) {
