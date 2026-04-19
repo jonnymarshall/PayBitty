@@ -23,9 +23,9 @@ export default function LoginPage() {
 
   if (submitted) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
+      <main id="login--main" className="flex min-h-screen items-center justify-center p-6">
         <div className="w-full max-w-sm text-center space-y-3">
-          <h1 className="text-2xl font-semibold">Check your email</h1>
+          <h1 id="login--success-heading" className="text-2xl font-semibold">Check your email</h1>
           <p className="text-muted-foreground text-sm">
             We sent a magic link to <span className="text-foreground">{email}</span>.
           </p>
@@ -35,18 +35,18 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main id="login--main" className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">Sign in to Paybitty</h1>
+          <h1 id="login--heading" className="text-2xl font-semibold">Sign in to Paybitty</h1>
           <p className="text-muted-foreground text-sm">
             Enter your email and we&apos;ll send you a magic link.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="login--form" onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label htmlFor="email" className="text-sm font-medium">
+            <label id="login--email-label" htmlFor="email" className="text-sm font-medium">
               Email
             </label>
             <input
@@ -61,7 +61,7 @@ export default function LoginPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button id="login--submit-button" type="submit" className="w-full" disabled={loading}>
             {loading ? "Sending…" : "Send magic link"}
           </Button>
         </form>

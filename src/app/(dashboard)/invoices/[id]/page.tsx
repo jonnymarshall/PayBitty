@@ -29,15 +29,15 @@ export default async function InvoiceDetailPage({
   const shareLink = `${appUrl}/invoice/${invoice.id}`;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
+    <div id="invoice-detail" className="max-w-2xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div id="invoice-detail--header" className="flex items-start justify-between">
         <div>
-          <Link href="/invoices" className="text-sm text-muted-foreground hover:text-foreground">
+          <Link id="invoice-detail--back-link" href="/invoices" className="text-sm text-muted-foreground hover:text-foreground">
             ← Invoices
           </Link>
           <div className="mt-2">
-            <h1 className="text-2xl font-semibold">{invoice.invoice_number || "Invoice"}</h1>
+            <h1 id="invoice-detail--heading" className="text-2xl font-semibold">{invoice.invoice_number || "Invoice"}</h1>
           </div>
           {invoice.client_email && (
             <p className="text-sm text-muted-foreground">{invoice.client_email}</p>
@@ -48,8 +48,8 @@ export default async function InvoiceDetailPage({
 
       {/* YOU / CLIENT */}
       {(invoice.your_name || invoice.client_company || invoice.client_address || invoice.client_tax_id) && (
-        <div className="grid grid-cols-2 gap-6 text-sm">
-          <div className="space-y-0.5">
+        <div id="invoice-detail--parties" className="grid grid-cols-2 gap-6 text-sm">
+          <div id="invoice-detail--from-section" className="space-y-0.5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">From</p>
             {invoice.your_name && <p className="font-medium">{invoice.your_name}</p>}
             {invoice.your_company && <p className="text-muted-foreground">{invoice.your_company}</p>}
@@ -57,7 +57,7 @@ export default async function InvoiceDetailPage({
             {invoice.your_address && <p className="text-muted-foreground">{invoice.your_address}</p>}
             {invoice.your_tax_id && <p className="text-muted-foreground">Tax ID: {invoice.your_tax_id}</p>}
           </div>
-          <div className="space-y-0.5">
+          <div id="invoice-detail--bill-to-section" className="space-y-0.5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Bill To</p>
             {invoice.client_name && <p className="font-medium">{invoice.client_name}</p>}
             {invoice.client_company && <p className="text-muted-foreground">{invoice.client_company}</p>}
@@ -70,7 +70,7 @@ export default async function InvoiceDetailPage({
 
       {/* Share link (published invoices only) */}
       {invoice.status !== "draft" && (
-        <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-4">
+        <div id="invoice-detail--share-section" className="rounded-lg border border-border bg-card px-5 py-4 space-y-4">
           <p className="text-sm font-medium">Share with client</p>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -96,11 +96,11 @@ export default async function InvoiceDetailPage({
       )}
 
       {/* Line items */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Line Items</h2>
-        <div className="rounded-lg border border-border divide-y divide-border">
+      <section id="invoice-detail--line-items" className="space-y-3">
+        <h2 id="invoice-detail--line-items-heading" className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Line Items</h2>
+        <div id="invoice-detail--line-items-list" className="rounded-lg border border-border divide-y divide-border">
           {items.map((item, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3 text-sm">
+            <div key={i} className="proxy-id--invoice-detail--line-items-row flex items-center justify-between px-4 py-3 text-sm">
               <span>{item.description}</span>
               <span className="text-muted-foreground">
                 {item.quantity} × ${Number(item.unit_price).toFixed(2)} ={" "}
@@ -122,7 +122,7 @@ export default async function InvoiceDetailPage({
       )}
 
       {/* Totals */}
-      <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5 text-sm">
+      <div id="invoice-detail--totals" className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5 text-sm">
         <div className="flex justify-between text-muted-foreground">
           <span>Subtotal</span>
           <span>${Number(invoice.subtotal_fiat).toFixed(2)}</span>

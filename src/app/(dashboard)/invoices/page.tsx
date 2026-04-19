@@ -13,10 +13,11 @@ export default async function InvoicesPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Invoices</h1>
+    <div id="invoices-page" className="space-y-6">
+      <div id="invoices-page--header" className="flex items-center justify-between">
+        <h1 id="invoices-page--heading" className="text-2xl font-semibold">Invoices</h1>
         <Link
+          id="invoices-page--new-invoice-link"
           href="/invoices/new"
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
@@ -25,9 +26,10 @@ export default async function InvoicesPage() {
       </div>
 
       {!invoices?.length ? (
-        <div className="rounded-lg border border-border p-12 text-center">
+        <div id="invoices-page--empty-state" className="rounded-lg border border-border p-12 text-center">
           <p className="text-sm text-muted-foreground">No invoices yet</p>
           <Link
+            id="invoices-page--create-first-link"
             href="/invoices/new"
             className="mt-4 inline-block text-sm text-primary hover:underline"
           >
@@ -35,12 +37,12 @@ export default async function InvoicesPage() {
           </Link>
         </div>
       ) : (
-        <div className="rounded-lg border border-border divide-y divide-border">
+        <div id="invoices-page--list" className="rounded-lg border border-border divide-y divide-border">
           {invoices.map((invoice) => (
             <Link
               key={invoice.id}
               href={`/invoices/${invoice.id}`}
-              className="flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+              className="proxy-id--invoices-page--list-item flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
             >
               <div className="space-y-0.5">
                 <p className="text-sm font-medium flex items-center gap-2">

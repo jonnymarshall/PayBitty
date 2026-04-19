@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 
@@ -12,11 +13,11 @@ export default async function DashboardLayout({
     if (cookieStore.get("dev-auth-bypass")?.value === "playwright") {
       return (
         <div className="min-h-screen flex flex-col">
-          <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-            <span className="font-semibold tracking-tight text-primary">Paybitty</span>
-            <span className="text-sm text-muted-foreground">dev@playwright.test</span>
+          <header id="nav--header" className="border-b border-border px-6 py-4 flex items-center justify-between">
+            <Link href="/invoices" className="font-semibold tracking-tight text-primary">Paybitty</Link>
+            <span id="nav--user-email" className="text-sm text-muted-foreground">dev@playwright.test</span>
           </header>
-          <main className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
+          <main id="dashboard--main" className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
             {children}
           </main>
         </div>
@@ -31,11 +32,11 @@ export default async function DashboardLayout({
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <span className="font-semibold tracking-tight text-primary">Paybitty</span>
-        <span className="text-sm text-muted-foreground">{user.email}</span>
+      <header id="nav--header" className="border-b border-border px-6 py-4 flex items-center justify-between">
+        <Link href="/invoices" className="font-semibold tracking-tight text-primary">Paybitty</Link>
+        <span id="nav--user-email" className="text-sm text-muted-foreground">{user.email}</span>
       </header>
-      <main className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
+      <main id="dashboard--main" className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
         {children}
       </main>
     </div>

@@ -30,18 +30,19 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
   }
 
   return (
-    <div className="space-y-3 pb-8">
-      {error && <p className="text-sm text-primary">{error}</p>}
-      <div className="flex gap-3 flex-wrap">
+    <div id="invoice-actions" className="space-y-3 pb-8">
+      {error && <p id="invoice-actions--error" className="text-sm text-primary">{error}</p>}
+      <div id="invoice-actions--buttons" className="flex gap-3 flex-wrap">
         {invoice.status === "draft" && (
           <>
             <Link href={`/invoices/${invoice.id}/edit`}>
-              <Button variant="outline">Edit draft</Button>
+              <Button id="invoice-actions--edit-draft-button" variant="outline">Edit draft</Button>
             </Link>
-            <Button onClick={() => run(() => publishInvoice(invoice.id))} disabled={busy}>
+            <Button id="invoice-actions--publish-button" onClick={() => run(() => publishInvoice(invoice.id))} disabled={busy}>
               Publish invoice
             </Button>
             <Button
+              id="invoice-actions--delete-draft-button"
               variant="outline"
               className="text-primary border-primary/30 hover:bg-primary/10"
               onClick={() =>
@@ -58,26 +59,26 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
         )}
         {invoice.status === "pending" && (
           <>
-            <Button onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
+            <Button id="invoice-actions--mark-paid-button" onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
               Mark as paid
             </Button>
-            <Button variant="outline" onClick={() => run(() => markOverdue(invoice.id))} disabled={busy}>
+            <Button id="invoice-actions--mark-overdue-button" variant="outline" onClick={() => run(() => markOverdue(invoice.id))} disabled={busy}>
               Mark as overdue
             </Button>
           </>
         )}
         {invoice.status === "overdue" && (
-          <Button onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
+          <Button id="invoice-actions--mark-paid-button" onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
             Mark as paid
           </Button>
         )}
         {invoice.status === "payment_detected" && (
-          <Button onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
+          <Button id="invoice-actions--confirm-paid-button" onClick={() => run(() => markPaid(invoice.id))} disabled={busy}>
             Confirm paid
           </Button>
         )}
         {invoice.status === "paid" && (
-          <Button variant="outline" onClick={() => run(() => markUnpaid(invoice.id))} disabled={busy}>
+          <Button id="invoice-actions--mark-unpaid-button" variant="outline" onClick={() => run(() => markUnpaid(invoice.id))} disabled={busy}>
             Mark as unpaid
           </Button>
         )}
