@@ -138,7 +138,7 @@ export async function publishInvoice(invoiceId: string) {
       .maybeSingle();
 
     if (conflict) {
-      const ref = conflict.invoice_number ? `invoice ${conflict.invoice_number}` : "another active invoice";
+      const ref = conflict.invoice_number ? `invoice ${conflict.invoice_number}` : `invoice …${conflict.id.slice(-8)}`;
       throw new Error(`btc_address: This bitcoin address has already been used on ${ref}. Please provide a unique address.`);
     }
   }
