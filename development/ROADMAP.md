@@ -168,17 +168,17 @@
 
 ---
 
-### ⏳ v1.2 — Client Payment View + BTC QR Code
+### ✅ v1.2 — Client Payment View + BTC QR Code
 
 **Branch:** `v1.2/client-payment-view`
 
 > Note: `/invoice/[id]` currently shows a "Client payment view coming soon" stub. This branch replaces it with the full implementation.
 
-- [ ] Public route `/invoice/[id]` with access code gate
-- [ ] BTC price fetching API: `GET /api/btc-price?currency=USD` (Coinbase primary, CoinGecko fallback, ~60s server-side cache)
-- [ ] BTC amount computed from live price at view time
-- [ ] BIP21 QR code generated (`bitcoin:<address>?amount=<btc>&label=<label>`)
-- [ ] Client view: invoice details, fiat total, BTC amount, QR code
+- [x] Public route `/invoice/[id]` with access code gate
+- [x] BTC price fetching API: `GET /api/btc-price?currency=USD` (Coinbase primary, CoinGecko fallback, ~60s server-side cache)
+- [x] BTC amount computed from live price at view time
+- [x] BIP21 QR code generated (`bitcoin:<address>?amount=<btc>&label=<label>`)
+- [x] Client view: invoice details, fiat total, BTC amount, QR code
 
 **Done when:** A client can open a link, enter an access code, see the invoice, and scan a QR code to pay.
 
