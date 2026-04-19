@@ -469,11 +469,9 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
         <Button id="btn-publish" onClick={handlePublish} disabled={saving}>
           Publish invoice
         </Button>
-        {invoiceId && (
-          <Button id="btn-cancel" variant="outline" type="button" onClick={handleCancel} disabled={saving}>
-            Cancel
-          </Button>
-        )}
+        <Button id="btn-cancel" variant="outline" type="button" onClick={handleCancel} disabled={saving}>
+          Cancel
+        </Button>
       </div>
     </div>
   );

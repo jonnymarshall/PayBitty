@@ -21,7 +21,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date" }: Dat
         <CalendarIcon className="h-4 w-4 opacity-50 shrink-0" />
         {value ? format(value, "PPP") : <span className="text-muted-foreground">{placeholder}</span>}
       </PopoverTrigger>
-      <PopoverContent className="p-0" align="start">
+      <PopoverContent className="w-fit p-0" align="start">
         <Calendar
           mode="single"
           selected={value}
