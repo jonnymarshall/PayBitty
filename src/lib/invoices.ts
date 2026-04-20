@@ -28,3 +28,9 @@ export function computeInvoiceTotals(
 export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
+
+export function parseServerError(raw: string): { field: string | null; message: string } {
+  const match = raw.match(/^([a-z_]+): ([\s\S]+)$/);
+  if (match) return { field: match[1], message: match[2] };
+  return { field: null, message: raw };
+}

@@ -146,39 +146,45 @@
 
 ---
 
-### ⏳ v1.1.5 — Form Validation, Nav & Date Picker
+### ✅ v1.1.5 — Form Validation, Nav & Date Picker
 
 **Branch:** `fix/invoice-form-improvements` (continued)
 
 **Routing & nav**
-- [ ] Navbar "Paybitty" logo text links to home (`/invoices`)
+- [x] Navbar "Paybitty" logo text links to home (`/invoices`)
 
 **Form validation hardening**
-- [ ] Qty field: enforce max 100,000 and max 2 decimal places (validate on submit, not on keystroke)
-- [ ] Unit price field: enforce max 1,000,000,000 and max 2 decimal places (validate on submit)
+- [x] Qty field: enforce max 100,000 and max 2 decimal places (validate on submit, not on keystroke)
+- [x] Unit price field: enforce max 1,000,000,000 and max 2 decimal places (validate on submit)
 
 **Date picker**
-- [ ] Replace current narrow date picker with the correctly-sized shadcn date picker matching the component docs (proper popover width, calendar styling)
+- [x] Replace current narrow date picker with the correctly-sized shadcn date picker matching the component docs (proper popover width, calendar styling)
 
 **ID coverage**
-- [ ] Create a reusable `add-ids` skill that audits the UI and adds appropriately named `id` attributes to all key elements
-- [ ] Run the skill across all pages and components so every interactive and structural element has a stable ID
+- [x] Create a reusable `add-ids` skill that audits the UI and adds appropriately named `id` attributes to all key elements
+- [x] Run the skill across all pages and components so every interactive and structural element has a stable ID
 
 **Done when:** Nav logo navigates home, validation rejects out-of-range qty/price, date picker matches shadcn docs, all key elements have IDs.
 
 ---
 
-### ⏳ v1.2 — Client Payment View + BTC QR Code
+### ✅ v1.2 — Client Payment View + BTC QR Code
 
 **Branch:** `v1.2/client-payment-view`
 
 > Note: `/invoice/[id]` currently shows a "Client payment view coming soon" stub. This branch replaces it with the full implementation.
 
-- [ ] Public route `/invoice/[id]` with access code gate
-- [ ] BTC price fetching API: `GET /api/btc-price?currency=USD` (Coinbase primary, CoinGecko fallback, ~60s server-side cache)
-- [ ] BTC amount computed from live price at view time
-- [ ] BIP21 QR code generated (`bitcoin:<address>?amount=<btc>&label=<label>`)
-- [ ] Client view: invoice details, fiat total, BTC amount, QR code
+- [x] Public route `/invoice/[id]` with access code gate
+- [x] BTC price fetching API: `GET /api/btc-price?currency=USD` (Coinbase primary, CoinGecko fallback, ~60s server-side cache)
+- [x] BTC amount computed from live price at view time
+- [x] BIP21 QR code generated (`bitcoin:<address>?amount=<btc>&label=<label>`)
+- [x] Client view: invoice details, fiat total, BTC amount, QR code
+
+**Also fixed on this branch**
+- [x] BTC address conflict error: shows inline below field (not top of form), scrolls to field, friendly message naming the conflicting invoice
+- [x] BTC conflict check covers all non-draft statuses (was only checking `pending`; DB index covers all)
+- [x] Centralised `parseServerError()` utility — error message wording lives in one place
+- [x] Conflict error falls back to short invoice ID (`…xxxxxxxx`) when conflicting invoice has no number
 
 **Done when:** A client can open a link, enter an access code, see the invoice, and scan a QR code to pay.
 
