@@ -180,6 +180,12 @@
 - [x] BIP21 QR code generated (`bitcoin:<address>?amount=<btc>&label=<label>`)
 - [x] Client view: invoice details, fiat total, BTC amount, QR code
 
+**Also fixed on this branch**
+- [x] BTC address conflict error: shows inline below field (not top of form), scrolls to field, friendly message naming the conflicting invoice
+- [x] BTC conflict check covers all non-draft statuses (was only checking `pending`; DB index covers all)
+- [x] Centralised `parseServerError()` utility — error message wording lives in one place
+- [x] Conflict error falls back to short invoice ID (`…xxxxxxxx`) when conflicting invoice has no number
+
 **Done when:** A client can open a link, enter an access code, see the invoice, and scan a QR code to pay.
 
 ---
