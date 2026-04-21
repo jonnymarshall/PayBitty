@@ -1,17 +1,19 @@
-const styles: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  pending: "bg-yellow-500/15 text-yellow-400",
-  payment_detected: "bg-blue-500/15 text-blue-400",
-  paid: "bg-green-500/15 text-green-400",
-  overdue: "bg-primary/15 text-primary",
+const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  draft:             { label: "Draft",             className: "bg-muted text-muted-foreground" },
+  pending:           { label: "Pending",           className: "bg-yellow-500/15 text-yellow-400" },
+  payment_detected:  { label: "Payment Detected",  className: "bg-blue-500/15 text-blue-400" },
+  paid:              { label: "Paid",              className: "bg-green-500/15 text-green-400" },
+  overdue:           { label: "Overdue",           className: "bg-destructive/15 text-destructive" },
 };
 
-export function InvoiceStatusBadge({ status }: { status: string }) {
+export function InvoiceStatusBadge({ status, id }: { status: string; id?: string }) {
+  const { label, className } = STATUS_CONFIG[status] ?? STATUS_CONFIG.draft;
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${styles[status] ?? styles.draft}`}
+      id={id}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}
     >
-      {status}
+      {label}
     </span>
   );
 }

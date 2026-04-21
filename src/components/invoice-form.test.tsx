@@ -16,6 +16,38 @@ vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ push: vi.fn() })),
 }));
 
+vi.mock("@/app/(dashboard)/invoices/actions", () => ({
+  saveDraft: vi.fn().mockResolvedValue({ id: "test-id" }),
+  updateDraft: vi.fn().mockResolvedValue({}),
+  publishInvoice: vi.fn().mockResolvedValue({}),
+}));
+
+describe("InvoiceForm BTC address validation", () => {
+  it("shows an error when publishing with an invalid BTC address", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+
+    await user.click(screen.getByRole("checkbox", { name: /accept bitcoin/i }));
+    const btcInput = screen.getByPlaceholderText(/bc1q/i);
+    await user.type(btcInput, "notavalidaddress");
+    await user.click(screen.getByRole("button", { name: /publish invoice/i }));
+
+    expect(screen.getByText(/invalid btc address/i)).toBeInTheDocument();
+  });
+
+  it("does not show a BTC address error when the address is valid", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+
+    await user.click(screen.getByRole("checkbox", { name: /accept bitcoin/i }));
+    const btcInput = screen.getByPlaceholderText(/bc1q/i);
+    await user.type(btcInput, "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
+    await user.click(screen.getByRole("button", { name: /publish invoice/i }));
+
+    expect(screen.queryByText(/invalid btc address/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("InvoiceForm line item validation", () => {
   it("rejects qty values above 100,000", async () => {
     const user = userEvent.setup();

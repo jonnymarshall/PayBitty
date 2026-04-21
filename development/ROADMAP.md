@@ -190,19 +190,48 @@
 
 ---
 
-### ⏳ v1.3 — Payment Detection
+### ✅ v1.3 — Payment Detection
 
 **Branch:** `v1.3/payment-detection`
 
-- [ ] mempool.space WebSocket connection opened client-side on the payment view page
-- [ ] 0-conf event: update invoice status to `payment_detected`
-- [ ] 1-conf event: update invoice status to `paid`
-- [ ] Fallback: exponential backoff polling (30s start, doubles, caps ~10min)
-- [ ] On login: sweep all `pending` / `payment_detected` invoices for the user to catch missed events
-- [ ] WebSocket closed once invoice reaches `paid`
-- [ ] Real-time status UI update on client payment page
+- [x] mempool.space WebSocket connection opened client-side on the payment view page
+- [x] 0-conf event: update invoice status to `payment_detected`
+- [x] 1-conf event: update invoice status to `paid`
+- [x] Fallback: exponential backoff polling (30s start, doubles, caps ~10min)
+- [x] WebSocket closed once invoice reaches `paid`
+- [x] Real-time status UI update on client payment page
+- [x] `btc_txid` saved when payment is detected or confirmed; displayed in both user and client views as a link to mempool.space
+- [x] BTC address validation — checksum-verified (bech32, bech32m, base58check) on both client form and server action; invalid addresses blocked at publish time
 
-**Done when:** Payment detection works end-to-end with live and fallback paths.
+> **Deferred to v1.4:** On-login sweep of all `pending` / `payment_detected` invoices — detected payments are caught when any relevant invoice page is viewed, which covers the common case. A background sweep at login will be added in v1.4 alongside email notifications (same session).
+
+**Done when:** Payment detection works end-to-end with live and fallback paths; invalid BTC addresses are rejected at publish time.
+
+---
+
+### ⏳ v1.3.1 — Invoice View & List Date Polish
+
+**Branch:** `v1.3.1/invoice-date-polish`
+
+- [ ] Invoice detail page (user view): add "Date Sent" (created/published date) and "Date Due" — currently shows no date information
+- [ ] Client payment view: already shows "Due" date — add "Date Sent" alongside it for full context
+- [ ] `/invoices` list: replace creation date with due date; label it "Due \<date\>" to avoid ambiguity (invoices with no due date show a dash or nothing)
+
+**Done when:** Both views clearly surface sent and due dates; the invoice list shows due date with unambiguous label.
+
+---
+
+### ⏳ v1.3.2 — Invoice List Management
+
+**Branch:** `v1.3.2/invoice-list-management`
+
+- [ ] Multi-select checkboxes on the `/invoices` list
+- [ ] Bulk action dropdown appears when one or more invoices are selected: Delete, Archive, Mark as Paid
+- [ ] Archive status: add `archived` to invoice status enum; archived invoices hidden from main list by default (consider a toggle to show them)
+- [ ] Bulk delete: confirm before executing; only draft invoices deletable in bulk (or confirm for non-draft)
+- [ ] Bulk mark as paid: applies to selected non-paid invoices
+
+**Done when:** User can select multiple invoices and apply bulk actions from a single dropdown.
 
 ---
 
@@ -210,6 +239,7 @@
 
 **Branch:** `v1.4/pdf-and-email`
 
+- [ ] On login: sweep all `pending` / `payment_detected` invoices for the user to catch missed events (deferred from v1.3)
 - [ ] Resend + React Email configured
 - [ ] Email: invoice link + access code sent to client on publish
 - [ ] Email: payment detected notification to creator (0-conf)
@@ -238,6 +268,35 @@
 - [ ] Persist mode preference to `localStorage`
 
 **Done when:** Colour scheme decision is made and implemented, all button states are visually distinct, and both dark and light mode work correctly throughout the app.
+
+---
+
+### ⏳ v1.6 — Bitcoin Enhancements
+
+**Branch:** `v1.6/btc-enhancements`
+
+- [ ] Optional BTC discount field on invoice creation (% value, e.g. 5%)
+- [ ] Discount only applies if the invoice is paid in Bitcoin — shown on the client payment view as a line item reducing the BTC amount
+- [ ] Discount displayed on client view alongside the BTC amount (e.g. "5% BTC discount — save $X")
+- [ ] Discount not reflected in the fiat total; it is a BTC-payment incentive only
+
+**Done when:** A freelancer can offer a percentage discount to clients who pay in BTC, visible only on the payment view.
+
+---
+
+### ⏳ v1.7 — Address Format Standardisation
+
+**Branch:** `v1.7/address-fields`
+
+> **Note:** This branch changes the address data model. Should land before v2.3 (saved client/sender details) since those features depend on the address structure.
+
+- [ ] Replace single freeform `your_address` / `client_address` text fields with structured fields: Line 1, Line 2, City, State/Province, Post Code, Country — following the UN/OASIS xNAL address standard ordering
+- [ ] Schema migration: add individual address sub-columns (nullable); keep old `*_address` column for migration only, then drop after backfill
+- [ ] Update invoice form with the new multi-field address layout
+- [ ] Update invoice detail page (user view) and client payment view to render the structured address correctly
+- [ ] No auto-fill or address lookup required
+
+**Done when:** All address inputs are structured multi-field; old freeform address column removed; views render the structured address neatly.
 
 ---
 
@@ -281,7 +340,19 @@
 
 **Branch:** `v2.3/address-book`
 
-- [ ] Saved contacts (client name, email, defaults)
+> **Depends on:** v1.7 (address format standardisation) — saved addresses use the structured multi-field format.
+
+**Saved client details**
+- [ ] User can save up to 5 client profiles (name, email, company, structured address, tax ID)
+- [ ] Client selector on invoice creation form — choosing a saved client pre-fills all client fields
+- [ ] Manage saved clients: add, edit, delete from a settings or clients page
+
+**Saved sender (own) details**
+- [ ] User can save one set of their own invoicing details (name, email, company, structured address, tax ID)
+- [ ] "Your details" section on invoice creation pre-fills from saved profile if one exists
+- [ ] User can update their saved details from settings
+
+**Reusable items**
 - [ ] Reusable service/line item templates
 
 ---

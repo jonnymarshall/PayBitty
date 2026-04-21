@@ -2,9 +2,11 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
+import { PaymentWatcher } from "@/app/invoice/[id]/payment-watcher";
 import { CopyButton } from "@/components/copy-button";
 import { InvoiceActions } from "./invoice-actions";
 import type { LineItem } from "@/lib/invoices";
+import { getMempoolBaseUrl } from "@/lib/btc-network";
 
 export default async function InvoiceDetailPage({
   params,
@@ -43,7 +45,15 @@ export default async function InvoiceDetailPage({
             <p className="text-sm text-muted-foreground">{invoice.client_email}</p>
           )}
         </div>
-        <InvoiceStatusBadge status={invoice.status} />
+        {invoice.accepts_bitcoin && invoice.btc_address ? (
+          <PaymentWatcher
+            invoiceId={invoice.id}
+            btcAddress={invoice.btc_address}
+            initialStatus={invoice.status}
+          />
+        ) : (
+          <InvoiceStatusBadge status={invoice.status} />
+        )}
       </div>
 
       {/* YOU / CLIENT */}
@@ -118,6 +128,21 @@ export default async function InvoiceDetailPage({
         <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Bitcoin Address</p>
           <code className="block text-xs break-all">{invoice.btc_address}</code>
+        </div>
+      )}
+
+      {/* Transaction ID */}
+      {invoice.btc_txid && (
+        <div className="rounded-lg border border-border bg-card px-5 py-4 space-y-1.5">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Transaction ID</p>
+          <a
+            href={`${getMempoolBaseUrl()}/tx/${invoice.btc_txid}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-xs font-mono break-all text-blue-500 hover:underline"
+          >
+            {invoice.btc_txid}
+          </a>
         </div>
       )}
 
