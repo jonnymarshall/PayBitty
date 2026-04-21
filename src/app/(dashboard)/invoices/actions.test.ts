@@ -89,7 +89,7 @@ describe("saveDraft", () => {
 describe("publishInvoice", () => {
   it("sets status to pending and attaches an 8-char access code", async () => {
     const { updateEq } = makeSupabase({
-      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qtest" },
+      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" },
     });
     await publishInvoice("inv-1");
     const [updatePayload] = updateEq.mock.calls[0];
@@ -98,7 +98,7 @@ describe("publishInvoice", () => {
 
   it("throws if the BTC address is already used on an active invoice", async () => {
     makeSupabase({
-      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qused", accepts_bitcoin: true },
+      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", accepts_bitcoin: true },
       btcConflict: { id: "inv-other", status: "pending" },
     });
     await expect(publishInvoice("inv-1")).rejects.toThrow(/btc_address: This bitcoin address/i);

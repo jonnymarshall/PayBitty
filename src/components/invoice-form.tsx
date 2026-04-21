@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/date-picker";
 import { saveDraft, updateDraft, publishInvoice, InvoicePayload } from "@/app/(dashboard)/invoices/actions";
-import { computeInvoiceTotals, isValidEmail, parseServerError, LineItem } from "@/lib/invoices";
+import { computeInvoiceTotals, isValidEmail, isValidBtcAddress, parseServerError, LineItem } from "@/lib/invoices";
 
 interface InvoiceFormProps {
   invoiceId?: string;
@@ -132,6 +132,7 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
     if (form.your_email && !isValidEmail(form.your_email)) errs.your_email = "Must be a valid email";
     if (form.invoice_number && form.invoice_number.length > 50) errs.invoice_number = "Max 50 characters";
     if (form.accepts_bitcoin && !form.btc_address.trim()) errs.btc_address = "BTC address required when Bitcoin is enabled";
+    if (form.accepts_bitcoin && form.btc_address.trim() && !isValidBtcAddress(form.btc_address.trim())) errs.btc_address = "Invalid BTC address";
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
       const firstKey = Object.keys(errs)[0];

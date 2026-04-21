@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { computeInvoiceTotals, LineItem } from "@/lib/invoices";
+import { computeInvoiceTotals, isValidBtcAddress, LineItem } from "@/lib/invoices";
 
 export interface InvoicePayload {
   invoice_number?: string;
@@ -127,8 +127,12 @@ export async function publishInvoice(invoiceId: string) {
   if (fetchError || !invoice) throw new Error("Invoice not found");
   if (invoice.user_id !== user!.id) throw new Error("Forbidden");
 
-  // Only check BTC uniqueness if bitcoin is enabled and address is provided
+  // Only check BTC validity and uniqueness if bitcoin is enabled and address is provided
   if (invoice.accepts_bitcoin && invoice.btc_address) {
+    if (!isValidBtcAddress(invoice.btc_address)) {
+      throw new Error("btc_address: Invalid BTC address");
+    }
+
     const { data: conflict } = await supabase
       .from("invoices")
       .select("id, invoice_number")

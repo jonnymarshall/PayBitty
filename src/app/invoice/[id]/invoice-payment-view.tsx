@@ -1,7 +1,10 @@
 import { Invoice } from "@/lib/invoice-public";
 import { fiatToBtc, buildBip21Uri } from "@/lib/btc-qr";
 import { BtcQrCode } from "@/components/btc-qr-code";
+import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
+import { PaymentWatcher } from "./payment-watcher";
 import { format } from "date-fns";
+import { getMempoolBaseUrl } from "@/lib/btc-network";
 
 interface Props {
   invoice: Invoice;
@@ -12,21 +15,6 @@ function fmtCurrency(amount: number, currency: string) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
 }
 
-function StatusBadge({ status }: { status: Invoice["status"] }) {
-  const map: Record<Invoice["status"], { label: string; className: string }> = {
-    pending: { label: "Pending", className: "bg-yellow-500/15 text-yellow-400" },
-    payment_detected: { label: "Payment Detected", className: "bg-blue-500/15 text-blue-400" },
-    paid: { label: "Paid", className: "bg-green-500/15 text-green-400" },
-    overdue: { label: "Overdue", className: "bg-destructive/15 text-destructive" },
-    draft: { label: "Draft", className: "bg-muted text-muted-foreground" },
-  };
-  const { label, className } = map[status];
-  return (
-    <span id="invoice-view--status" className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
-      {label}
-    </span>
-  );
-}
 
 export function InvoicePaymentView({ invoice, btcPrice }: Props) {
   const cur = invoice.currency;
@@ -59,7 +47,15 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
               </p>
             )}
           </div>
-          <StatusBadge status={invoice.status} />
+          {invoice.accepts_bitcoin && invoice.btc_address ? (
+            <PaymentWatcher
+              invoiceId={invoice.id}
+              btcAddress={invoice.btc_address}
+              initialStatus={invoice.status}
+            />
+          ) : (
+            <InvoiceStatusBadge status={invoice.status} id="invoice-view--status" />
+          )}
         </div>
 
         {/* Parties */}
@@ -152,6 +148,20 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Address</p>
                   <p id="invoice-view--btc-address" className="text-xs font-mono break-all">{invoice.btc_address}</p>
                 </div>
+                {invoice.btc_txid && (
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Transaction ID</p>
+                    <a
+                      id="invoice-view--btc-txid"
+                      href={`${getMempoolBaseUrl()}/tx/${invoice.btc_txid}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-mono break-all text-blue-500 hover:underline"
+                    >
+                      {invoice.btc_txid}
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -170,6 +180,20 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
               Bitcoin address: <span className="font-mono text-xs">{invoice.btc_address}</span>
             </p>
             <p className="text-xs text-muted-foreground">BTC price unavailable — please calculate the amount manually.</p>
+            {invoice.btc_txid && (
+              <p className="text-xs text-muted-foreground">
+                Transaction:{" "}
+                <a
+                  id="invoice-view--btc-txid-fallback"
+                  href={`${getMempoolBaseUrl()}/tx/${invoice.btc_txid}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-blue-500 hover:underline"
+                >
+                  {invoice.btc_txid}
+                </a>
+              </p>
+            )}
           </div>
         )}
       </div>
