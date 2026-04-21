@@ -41,9 +41,13 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
             <h1 id="invoice-view--title" className="text-2xl font-semibold">
               {invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : "Invoice"}
             </h1>
+            <p id="invoice-view--date-sent" className="text-sm text-muted-foreground">
+              <span className="font-medium">Date Sent</span>{" "}
+              {format(new Date(invoice.created_at), "MMMM d, yyyy")}
+            </p>
             {invoice.due_date && (
               <p id="invoice-view--due-date" className="text-sm text-muted-foreground">
-                Due {format(new Date(invoice.due_date), "MMMM d, yyyy")}
+                Due {format(new Date(invoice.due_date + "T12:00:00"), "MMMM d, yyyy")}
               </p>
             )}
           </div>

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-04-21
+
+### Added
+- Invoice detail page now shows "Date Sent" and "Date Due" in the header area
+- Client payment view now shows "Date Sent" alongside the existing "Due" date
+- Invoice list now shows due date with "Due" prefix instead of creation date; invoices with no due date show "—"
+
+### Fixed
+- Due date formatting across all views now handles date-only strings correctly (no off-by-one-day in western timezones)
+- Dashboard redirect test updated to reflect the `/dashboard` → `/invoices` redirect behaviour
+
 ## [1.1.5] - 2026-04-19
 
 ### Fixed

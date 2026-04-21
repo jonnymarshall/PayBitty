@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
 import { PaymentWatcher } from "@/app/invoice/[id]/payment-watcher";
@@ -44,6 +45,18 @@ export default async function InvoiceDetailPage({
           {invoice.client_email && (
             <p className="text-sm text-muted-foreground">{invoice.client_email}</p>
           )}
+          <div id="invoice-detail--dates" className="flex gap-4 mt-2 text-xs text-muted-foreground">
+            <span>
+              <span className="font-medium">Date Sent</span>{" "}
+              {format(new Date(invoice.created_at), "MMM d, yyyy")}
+            </span>
+            {invoice.due_date && (
+              <span>
+                <span className="font-medium">Date Due</span>{" "}
+                {format(new Date(invoice.due_date + "T12:00:00"), "MMM d, yyyy")}
+              </span>
+            )}
+          </div>
         </div>
         {invoice.accepts_bitcoin && invoice.btc_address ? (
           <PaymentWatcher
@@ -161,7 +174,7 @@ export default async function InvoiceDetailPage({
         {invoice.due_date && (
           <div className="flex justify-between text-muted-foreground">
             <span>Due</span>
-            <span>{new Date(invoice.due_date).toLocaleDateString()}</span>
+            <span>{format(new Date(invoice.due_date + "T12:00:00"), "MMM d, yyyy")}</span>
           </div>
         )}
         <div className="flex justify-between font-semibold text-base pt-1 border-t border-border">
