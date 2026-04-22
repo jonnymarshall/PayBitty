@@ -37,7 +37,7 @@ export default async function InvoicesPage() {
           </Link>
         </div>
       ) : (
-        <InvoiceDataTable data={invoices} />
+        <InvoiceDataTable data={invoices} userId={user?.id ?? ""} />
       )}
     </div>
   );

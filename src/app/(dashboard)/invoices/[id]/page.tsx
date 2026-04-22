@@ -3,7 +3,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { InvoiceDates } from "@/components/invoice-dates";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
-import { PaymentWatcher } from "@/app/invoice/[id]/payment-watcher";
+import { PaymentWatcherUncontrolled } from "@/app/invoice/[id]/payment-watcher-uncontrolled";
+import { InvoiceDetailRealtime } from "./invoice-detail-realtime";
 import { CopyButton } from "@/components/copy-button";
 import { InvoiceActions } from "./invoice-actions";
 import type { LineItem } from "@/lib/invoices";
@@ -33,6 +34,7 @@ export default async function InvoiceDetailPage({
 
   return (
     <div id="invoice-detail" className="max-w-2xl mx-auto space-y-8">
+      <InvoiceDetailRealtime invoiceId={invoice.id} />
       {/* Header */}
       <div id="invoice-detail--header" className="flex items-start justify-between">
         <div>
@@ -50,7 +52,8 @@ export default async function InvoiceDetailPage({
           </div>
         </div>
         {invoice.accepts_bitcoin && invoice.btc_address ? (
-          <PaymentWatcher
+          <PaymentWatcherUncontrolled
+            key={invoice.status}
             invoiceId={invoice.id}
             btcAddress={invoice.btc_address}
             initialStatus={invoice.status}

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-04-22
+
+### Added
+- `/invoices` list now live-updates via Supabase Realtime — when a payer's BTC payment is detected on the public invoice view, the freelancer's list row flips from "Pending" to "Payment Detected" within ~1s, without a manual refresh. Also covers INSERT and DELETE (new invoices from another tab, archives, bulk deletes). Works by subscribing the data-table to `postgres_changes` on `public.invoices` (RLS scopes events to the signed-in user) and calling `router.refresh()` on each event so the server component re-fetches fresh rows.
+- `/invoices/[id]` dashboard detail page also live-updates via Supabase Realtime with a narrower filter (`id=eq.<invoiceId>`). Status badge, transaction ID link, and the action menu all reflect the current DB state within ~1s of the payer's confirmation — no manual refresh. A `key={invoice.status}` was added to the page's `PaymentWatcherUncontrolled` so its internal state resets when the server re-renders with a fresh status (prevents stale-badge edge case when another device detected the payment).
+- Migration `0005_enable_invoices_realtime.sql` — adds `public.invoices` to the `supabase_realtime` publication so Realtime events are emitted. RLS policies (already in place) continue to scope events to the signed-in user.
+- Migration `0006_invoices_replica_identity_full.sql` — sets `REPLICA IDENTITY FULL` on `public.invoices` so UPDATE events carry all column values. Supabase Realtime needs this for reliable event delivery when RLS policies inspect columns beyond the primary key.
+- Realtime hook explicitly calls `supabase.realtime.setAuth(access_token)` before subscribing, closing a race where Realtime would connect unauthenticated and have events silently dropped by RLS.
+- Realtime hook has a `visibilitychange` fallback: when the tab regains focus, it calls `router.refresh()` so the list still catches up if a Realtime event was ever missed.
+- Diagnostic logging in the Realtime hook (`[invoice-realtime] ...`) — subscribe status, event receipt, and auth state — makes future connection issues easier to diagnose from the browser console.
+- "Pay now in Bitcoin" reveal button on the public invoice view — QR code and address are now hidden behind an explicit click so the payer can review the invoice first. Auto-reveals if the invoice is already `payment_detected` or `paid` (so the txid link is visible without the extra click).
+- "Mark as Payment Sent" button (shown once payment details are revealed) opens a dialog that actively polls mempool.space over 60 seconds with a front-loaded tiered schedule (15 polls: 5x2s + 5x3s + 3x5s + 2x10s)
+- Polling dialog has three states: polling (with progress bar + "Cancel" button and helper text "Click here if you have not yet made the Bitcoin payment"), detected ("Your payment has been detected" with "OK"), and timed-out (with a link to view the address on mempool.space)
+- When a payment is detected mid-polling, the progress bar animates to 100% for ~400ms before the dialog flips to the detected view — the payer gets a clear visual beat for the confirmation
+- Detected dialog auto-opens even when the payer never clicked "Mark as Payment Sent" — if the background watcher catches the payment, the dialog still pops so the confirmation is unmistakable
+
+### Changed
+- `PaymentWatcher` is now a controlled component (accepts `status` + `onStatusChange` props instead of `initialStatus`); status is owned by the parent so the reveal button, the polling dialog, and the background watcher all stay in sync
+- Background watcher's fallback polling first-delay reduced from 30s to 10s (still exponential backoff up to 10 minutes) so page-reload and long-open tab detection recovers faster when the WebSocket fails
+- Added `console.warn` in the WebSocket `onerror` handler to surface testnet4 flakiness in the browser console
+
+### Added (internal)
+- `PaymentWatcherUncontrolled` wrapper for use in server-rendered pages that want the old "manages its own state" API (used by the dashboard invoice detail page)
+
 ## [1.3.2] - 2026-04-21
 
 ### Added
