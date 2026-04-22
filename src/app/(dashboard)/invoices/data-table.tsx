@@ -40,7 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { bulkArchive, bulkDelete, bulkMarkPaid } from "./bulk-actions";
+import { bulkArchive, bulkDelete, bulkMarkPaid, bulkUnarchive } from "./bulk-actions";
 import { publishInvoice, duplicateInvoice } from "./actions";
 import { buildColumns, InvoiceRow } from "./columns";
 import { useInvoiceRealtime } from "./use-invoice-realtime";
@@ -97,6 +97,7 @@ export function InvoiceDataTable({ data, userId }: Props) {
         onMarkSent: (id) => runRowAction(() => publishInvoice(id)),
         onMarkPaid: (id) => runRowAction(() => bulkMarkPaid([id])),
         onArchive: (id) => runRowAction(() => bulkArchive([id])),
+        onUnarchive: (id) => runRowAction(() => bulkUnarchive([id])),
         onDelete: (id) => setDeleteTarget([id]),
         onCopyPublicLink: copyPublicLink,
         onDuplicate: (id) => runRowAction(() => duplicateInvoice(id)),
@@ -223,6 +224,16 @@ export function InvoiceDataTable({ data, userId }: Props) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {hasSelection && (
+          <Button
+            id="invoice-data-table--clear-selected"
+            variant="ghost"
+            onClick={() => setRowSelection({})}
+          >
+            Clear selected
+          </Button>
+        )}
 
         <Button
           id="invoice-data-table--archive-toggle"

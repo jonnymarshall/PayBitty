@@ -7,13 +7,32 @@ export async function bulkArchive(ids: string[]) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { error } = await supabase
+  // Capture each row's current status so unarchive can restore it. Drafts can't be
+  // archived (btc_address unique partial index would collide); already-archived rows
+  // don't need to be re-archived.
+  const { data: rows, error: fetchError } = await supabase
     .from("invoices")
-    .update({ status: "archived" })
+    .select("id, status")
     .eq("user_id", user!.id)
-    .in("id", ids);
+    .in("id", ids)
+    .neq("status", "draft")
+    .neq("status", "archived");
 
-  if (error) throw new Error(error.message);
+  if (fetchError) throw new Error(fetchError.message);
+  if (!rows || rows.length === 0) {
+    revalidatePath("/invoices");
+    return;
+  }
+
+  for (const row of rows as { id: string; status: string }[]) {
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "archived", pre_archive_status: row.status })
+      .eq("user_id", user!.id)
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+  }
+
   revalidatePath("/invoices");
 }
 
@@ -28,6 +47,35 @@ export async function bulkDelete(ids: string[]) {
     .in("id", ids);
 
   if (error) throw new Error(error.message);
+  revalidatePath("/invoices");
+}
+
+export async function bulkUnarchive(ids: string[]) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: rows, error: fetchError } = await supabase
+    .from("invoices")
+    .select("id, pre_archive_status")
+    .eq("user_id", user!.id)
+    .in("id", ids)
+    .eq("status", "archived");
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!rows || rows.length === 0) {
+    revalidatePath("/invoices");
+    return;
+  }
+
+  for (const row of rows as { id: string; pre_archive_status: string | null }[]) {
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: row.pre_archive_status ?? "pending", pre_archive_status: null })
+      .eq("user_id", user!.id)
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+  }
+
   revalidatePath("/invoices");
 }
 
