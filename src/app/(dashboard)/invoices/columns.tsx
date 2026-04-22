@@ -10,7 +10,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
@@ -175,7 +174,6 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                   </DropdownMenuItem>
                 </>
               )}
-              <DropdownMenuSeparator />
               {isDraft && (
                 <DropdownMenuItem onClick={() => actions.onMarkSent(invoice.id)}>
                   Mark as sent
@@ -191,7 +189,6 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                   Archive
                 </DropdownMenuItem>
               )}
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => actions.onDuplicate(invoice.id)}>
                 Duplicate 🚩
               </DropdownMenuItem>

@@ -28,7 +28,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -209,7 +208,6 @@ export function InvoiceDataTable({ data }: Props) {
           <DropdownMenuContent align="end" className="w-48 whitespace-nowrap">
             <DropdownMenuItem onClick={handleBulkMarkPaid}>Mark as paid</DropdownMenuItem>
             <DropdownMenuItem onClick={handleBulkArchive}>Archive</DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => setDeleteTarget(selectedIds)}
               className="text-destructive focus:text-destructive"
