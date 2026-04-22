@@ -1,10 +1,19 @@
+"use client";
+
+import { useState } from "react";
 import { Invoice } from "@/lib/invoice-public";
 import { fiatToBtc, buildBip21Uri } from "@/lib/btc-qr";
 import { BtcQrCode } from "@/components/btc-qr-code";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
 import { InvoiceDates } from "@/components/invoice-dates";
 import { PaymentWatcher } from "./payment-watcher";
+import { MarkSentButton } from "./mark-sent-button";
+import { Button } from "@/components/ui/button";
 import { getMempoolBaseUrl } from "@/lib/btc-network";
+
+function isPayableStatus(s: Invoice["status"]): boolean {
+  return s === "pending" || s === "overdue";
+}
 
 interface Props {
   invoice: Invoice;
@@ -17,6 +26,11 @@ function fmtCurrency(amount: number, currency: string) {
 
 
 export function InvoicePaymentView({ invoice, btcPrice }: Props) {
+  const [status, setStatus] = useState<Invoice["status"]>(invoice.status);
+  const [userRevealedPayment, setUserRevealedPayment] = useState(false);
+  // Auto-reveal payment details for invoices that aren't awaiting payment (already
+  // detected/paid), so the txid link is visible without an extra click.
+  const showPaymentDetails = userRevealedPayment || !isPayableStatus(status);
   const cur = invoice.currency;
   const showBtc = invoice.accepts_bitcoin && !!invoice.btc_address && !!btcPrice;
   const btcAmount = showBtc ? fiatToBtc(invoice.total_fiat, btcPrice!) : null;
@@ -47,10 +61,11 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
             <PaymentWatcher
               invoiceId={invoice.id}
               btcAddress={invoice.btc_address}
-              initialStatus={invoice.status}
+              status={status}
+              onStatusChange={setStatus}
             />
           ) : (
-            <InvoiceStatusBadge status={invoice.status} id="invoice-view--status" />
+            <InvoiceStatusBadge status={status} id="invoice-view--status" />
           )}
         </div>
 
@@ -128,38 +143,55 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
         {showBtc && (
           <div id="invoice-view--btc-section" className="rounded-lg border border-border p-6 space-y-6">
             <h2 id="invoice-view--btc-heading" className="font-semibold">Pay with Bitcoin</h2>
-            <div className="flex flex-col sm:flex-row gap-6 items-start">
-              <BtcQrCode uri={bip21Uri!} size={200} />
-              <div className="space-y-3">
-                <div className="space-y-0.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">BTC amount</p>
-                  <p id="invoice-view--btc-amount" className="text-lg font-semibold tabular-nums">
-                    {btcAmount!.toFixed(8).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")} BTC
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    at {fmtCurrency(btcPrice!, "USD")}/BTC
-                  </p>
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Address</p>
-                  <p id="invoice-view--btc-address" className="text-xs font-mono break-all">{invoice.btc_address}</p>
-                </div>
-                {invoice.btc_txid && (
+            {showPaymentDetails ? (
+              <div className="flex flex-col sm:flex-row gap-6 items-start">
+                <BtcQrCode uri={bip21Uri!} size={200} />
+                <div className="space-y-3">
                   <div className="space-y-0.5">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Transaction ID</p>
-                    <a
-                      id="invoice-view--btc-txid"
-                      href={`${getMempoolBaseUrl()}/tx/${invoice.btc_txid}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-mono break-all text-blue-500 hover:underline"
-                    >
-                      {invoice.btc_txid}
-                    </a>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">BTC amount</p>
+                    <p id="invoice-view--btc-amount" className="text-lg font-semibold tabular-nums">
+                      {btcAmount!.toFixed(8).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")} BTC
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      at {fmtCurrency(btcPrice!, "USD")}/BTC
+                    </p>
                   </div>
-                )}
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Address</p>
+                    <p id="invoice-view--btc-address" className="text-xs font-mono break-all">{invoice.btc_address}</p>
+                  </div>
+                  {invoice.btc_txid && (
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Transaction ID</p>
+                      <a
+                        id="invoice-view--btc-txid"
+                        href={`${getMempoolBaseUrl()}/tx/${invoice.btc_txid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-mono break-all text-blue-500 hover:underline"
+                      >
+                        {invoice.btc_txid}
+                      </a>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <Button
+                id="invoice-view--reveal-btc-button"
+                className="w-full"
+                onClick={() => setUserRevealedPayment(true)}
+              >
+                Pay now in Bitcoin
+              </Button>
+            )}
+            <MarkSentButton
+              invoiceId={invoice.id}
+              btcAddress={invoice.btc_address!}
+              status={status}
+              onStatusChange={setStatus}
+              showButton={showPaymentDetails}
+            />
           </div>
         )}
 

@@ -11,6 +11,9 @@ vi.mock("./bulk-actions", () => ({
 vi.mock("./actions", () => ({
   publishInvoice: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("./use-invoice-realtime", () => ({
+  useInvoiceRealtime: vi.fn(),
+}));
 
 import { bulkArchive, bulkDelete, bulkMarkPaid } from "./bulk-actions";
 import { publishInvoice } from "./actions";
@@ -28,7 +31,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe("InvoiceDataTable — structure", () => {
   it("renders column headers: Invoice, Client, Date Sent, Date Due, Amount, Status", () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     expect(screen.getByRole("button", { name: /^invoice/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^client/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /date sent/i })).toBeInTheDocument();
@@ -38,24 +41,24 @@ describe("InvoiceDataTable — structure", () => {
   });
 
   it("hides archived invoices by default", () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     expect(screen.queryByText("Umbrella")).not.toBeInTheDocument();
   });
 
   it("shows 'X of N invoices selected' footer", () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     expect(screen.getByText(/0 of 3 invoices selected/)).toBeInTheDocument();
   });
 
   it("disables the bulk actions button when no rows are selected", () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     expect(bulkActionsBtn()).toBeDisabled();
   });
 });
 
 describe("InvoiceDataTable — filtering", () => {
   it("filters rows by invoice number", () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     fireEvent.change(screen.getByPlaceholderText(/filter by invoice/i), {
       target: { value: "INV-002" },
     });
@@ -64,7 +67,7 @@ describe("InvoiceDataTable — filtering", () => {
   });
 
   it("filters rows by client name", () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     fireEvent.change(screen.getByPlaceholderText(/filter by invoice/i), {
       target: { value: "Acme" },
     });
@@ -75,7 +78,7 @@ describe("InvoiceDataTable — filtering", () => {
 
 describe("InvoiceDataTable — archive toggle", () => {
   it("reveals archived invoices when toggled", () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     fireEvent.click(screen.getByRole("button", { name: /show archived/i }));
     expect(screen.getByText("Umbrella")).toBeInTheDocument();
   });
@@ -83,7 +86,7 @@ describe("InvoiceDataTable — archive toggle", () => {
 
 describe("InvoiceDataTable — bulk actions", () => {
   it("calls bulkMarkPaid with selected ids", async () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     const rowCheckboxes = screen.getAllByRole("checkbox", { name: /select row/i });
     fireEvent.click(rowCheckboxes[1]); // inv-2
     fireEvent.click(bulkActionsBtn());
@@ -92,7 +95,7 @@ describe("InvoiceDataTable — bulk actions", () => {
   });
 
   it("calls bulkArchive with selected ids", async () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     const rowCheckboxes = screen.getAllByRole("checkbox", { name: /select row/i });
     fireEvent.click(rowCheckboxes[0]); // inv-1
     fireEvent.click(bulkActionsBtn());
@@ -101,7 +104,7 @@ describe("InvoiceDataTable — bulk actions", () => {
   });
 
   it("opens confirmation dialog before calling bulkDelete", async () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     const rowCheckboxes = screen.getAllByRole("checkbox", { name: /select row/i });
     fireEvent.click(rowCheckboxes[0]);
     fireEvent.click(bulkActionsBtn());
@@ -116,7 +119,7 @@ describe("InvoiceDataTable — bulk actions", () => {
 
 describe("InvoiceDataTable — per-row actions", () => {
   it("shows 'Edit' and 'Mark as sent' for draft invoices", async () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     // open first row's dropdown (inv-1 is a draft)
     const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
     fireEvent.click(openMenuButtons[0]);
@@ -125,7 +128,7 @@ describe("InvoiceDataTable — per-row actions", () => {
   });
 
   it("shows 'View public invoice' and 'Copy public link' for non-draft invoices", async () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     // second row is pending (inv-2)
     const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
     fireEvent.click(openMenuButtons[1]);
@@ -134,14 +137,14 @@ describe("InvoiceDataTable — per-row actions", () => {
   });
 
   it("shows 'Duplicate 🚩' on every row", async () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
     fireEvent.click(openMenuButtons[0]);
     expect(await screen.findByRole("menuitem", { name: /duplicate/i })).toBeInTheDocument();
   });
 
   it("calls publishInvoice when 'Mark as sent' is clicked on a draft", async () => {
-    render(<InvoiceDataTable data={MOCK_INVOICES} />);
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
     fireEvent.click(openMenuButtons[0]); // inv-1 draft
     fireEvent.click(await screen.findByRole("menuitem", { name: /mark as sent/i }));

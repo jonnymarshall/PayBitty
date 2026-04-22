@@ -51,45 +51,67 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("PaymentWatcher", () => {
-  it("renders the initial status badge", () => {
+  it("renders the status badge from props", () => {
     render(
-      <PaymentWatcher invoiceId="inv-1" btcAddress="tb1qtarget" initialStatus="pending" />
+      <PaymentWatcher
+        invoiceId="inv-1"
+        btcAddress="tb1qtarget"
+        status="pending"
+        onStatusChange={() => {}}
+      />
     );
     expect(screen.getByText("Pending")).toBeInTheDocument();
   });
 
   it("does not poll when already paid", async () => {
     render(
-      <PaymentWatcher invoiceId="inv-1" btcAddress="tb1qtarget" initialStatus="paid" />
+      <PaymentWatcher
+        invoiceId="inv-1"
+        btcAddress="tb1qtarget"
+        status="paid"
+        onStatusChange={() => {}}
+      />
     );
     expect(screen.getByText("Paid")).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 50));
     expect(mockFetchAddressTxs).not.toHaveBeenCalled();
   });
 
-  it("detects unconfirmed tx on mount and updates to payment_detected", async () => {
+  it("calls onStatusChange with payment_detected when it finds an unconfirmed tx on mount", async () => {
+    const onStatusChange = vi.fn();
     mockFetchAddressTxs.mockResolvedValueOnce([unconfirmedTx]);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ status: "payment_detected" }), { status: 200 })
     );
 
     render(
-      <PaymentWatcher invoiceId="inv-1" btcAddress="tb1qtarget" initialStatus="pending" />
+      <PaymentWatcher
+        invoiceId="inv-1"
+        btcAddress="tb1qtarget"
+        status="pending"
+        onStatusChange={onStatusChange}
+      />
     );
 
-    await waitFor(() => expect(screen.getByText("Payment Detected")).toBeInTheDocument());
+    await waitFor(() => expect(onStatusChange).toHaveBeenCalledWith("payment_detected"));
   });
 
-  it("detects confirmed tx on mount and updates to paid", async () => {
+  it("calls onStatusChange with paid when it finds a confirmed tx on mount", async () => {
+    const onStatusChange = vi.fn();
     mockFetchAddressTxs.mockResolvedValueOnce([confirmedTx]);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ status: "paid" }), { status: 200 })
     );
 
     render(
-      <PaymentWatcher invoiceId="inv-1" btcAddress="tb1qtarget" initialStatus="pending" />
+      <PaymentWatcher
+        invoiceId="inv-1"
+        btcAddress="tb1qtarget"
+        status="pending"
+        onStatusChange={onStatusChange}
+      />
     );
 
-    await waitFor(() => expect(screen.getByText("Paid")).toBeInTheDocument());
+    await waitFor(() => expect(onStatusChange).toHaveBeenCalledWith("paid"));
   });
 });

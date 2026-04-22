@@ -10,6 +10,9 @@ vi.mock("./bulk-actions", () => ({
   bulkDelete: vi.fn(),
   bulkMarkPaid: vi.fn(),
 }));
+vi.mock("./use-invoice-realtime", () => ({
+  useInvoiceRealtime: vi.fn(),
+}));
 
 const MOCK_INVOICES = [
   {

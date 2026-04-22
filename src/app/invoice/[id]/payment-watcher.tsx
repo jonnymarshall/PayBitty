@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { fetchAddressTxs, txPaysToAddress, type MempoolTx } from "@/lib/mempool";
 import { getMempoolWsUrl } from "@/lib/btc-network";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
@@ -11,7 +11,8 @@ type Status = Invoice["status"];
 interface Props {
   invoiceId: string;
   btcAddress: string;
-  initialStatus: Status;
+  status: Status;
+  onStatusChange: (s: Status) => void;
 }
 
 async function reportStatus(
@@ -29,13 +30,13 @@ async function reportStatus(
   return data.status ?? null;
 }
 
-export function PaymentWatcher({ invoiceId, btcAddress, initialStatus }: Props) {
-  const [status, setStatus] = useState<Status>(initialStatus);
+export function PaymentWatcher({ invoiceId, btcAddress, status, onStatusChange }: Props) {
   const wsRef = useRef<WebSocket | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPaid = status === "paid";
 
   useEffect(() => {
-    if (status === "paid") return;
+    if (isPaid) return;
 
     let cancelled = false;
 
@@ -49,12 +50,14 @@ export function PaymentWatcher({ invoiceId, btcAddress, initialStatus }: Props) 
       if (confirmed) {
         const next = await reportStatus(invoiceId, confirmed.txid, "paid");
         if (!cancelled && next) {
-          setStatus(next);
+          onStatusChange(next);
           if (next === "paid") closeWebSocket();
         }
       } else if (unconfirmed) {
         const next = await reportStatus(invoiceId, unconfirmed.txid, "payment_detected");
-        if (!cancelled && next) setStatus((prev) => (prev === "paid" ? prev : next));
+        if (!cancelled && next) {
+          onStatusChange(next);
+        }
       }
     }
 
@@ -104,7 +107,7 @@ export function PaymentWatcher({ invoiceId, btcAddress, initialStatus }: Props) 
           if (tx) {
             const next = await reportStatus(invoiceId, tx.txid, "paid");
             if (!cancelled && next) {
-              setStatus(next);
+              onStatusChange(next);
               if (next === "paid") closeWebSocket();
             }
           }
@@ -112,16 +115,21 @@ export function PaymentWatcher({ invoiceId, btcAddress, initialStatus }: Props) 
           const tx = mempoolTxs.find((t) => txPaysToAddress(t, btcAddress));
           if (tx) {
             const next = await reportStatus(invoiceId, tx.txid, "payment_detected");
-            if (!cancelled && next) setStatus((prev) => (prev === "paid" ? prev : next));
+            if (!cancelled && next) {
+              onStatusChange(next);
+            }
           }
         }
       };
 
-      ws.onerror = () => ws.close();
+      ws.onerror = (event) => {
+        console.warn("[PaymentWatcher] WebSocket error, falling back to polling", event);
+        ws.close();
+      };
 
       ws.onclose = () => {
         wsRef.current = null;
-        if (!cancelled) startPolling(30_000);
+        if (!cancelled) startPolling(10_000);
       };
     }
 
@@ -133,7 +141,7 @@ export function PaymentWatcher({ invoiceId, btcAddress, initialStatus }: Props) 
       closeWebSocket();
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [invoiceId, btcAddress, onStatusChange, isPaid]);
 
   return <InvoiceStatusBadge status={status} id="invoice-view--status" />;
 }

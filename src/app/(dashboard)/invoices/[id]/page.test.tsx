@@ -50,6 +50,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("next/navigation", () => ({ notFound: vi.fn() }));
 vi.mock("@/lib/btc-network", () => ({ getMempoolBaseUrl: () => "https://mempool.space" }));
 vi.mock("./invoice-actions", () => ({ InvoiceActions: () => null }));
+vi.mock("./invoice-detail-realtime", () => ({ InvoiceDetailRealtime: () => null }));
 
 describe("InvoiceDetailPage — dates", () => {
   it("shows 'Date Sent:' label with formatted date", async () => {

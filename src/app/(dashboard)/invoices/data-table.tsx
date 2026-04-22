@@ -43,6 +43,7 @@ import {
 import { bulkArchive, bulkDelete, bulkMarkPaid } from "./bulk-actions";
 import { publishInvoice } from "./actions";
 import { buildColumns, InvoiceRow } from "./columns";
+import { useInvoiceRealtime } from "./use-invoice-realtime";
 
 const COLUMN_LABELS: Record<string, string> = {
   invoice_number: "Invoice",
@@ -55,10 +56,12 @@ const COLUMN_LABELS: Record<string, string> = {
 
 interface Props {
   data: InvoiceRow[];
+  userId: string;
 }
 
-export function InvoiceDataTable({ data }: Props) {
+export function InvoiceDataTable({ data, userId }: Props) {
   const router = useRouter();
+  useInvoiceRealtime(userId);
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([
     { id: "status", value: ["draft", "pending", "payment_detected", "paid", "overdue"] },

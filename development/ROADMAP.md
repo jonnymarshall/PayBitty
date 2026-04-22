@@ -235,9 +235,27 @@
 
 ---
 
-### ⏳ v1.3.3 — Invoice Duplication
+### ✅ v1.3.3 — Payment Sent Button & Reveal Gate
 
-**Branch:** `v1.3.3/invoice-duplication`
+**Branch:** `v1.3.3/payment-sent-button`
+
+- [x] "Pay now in Bitcoin" reveal button — QR and address hidden until the payer clicks through, so they review the invoice first. Auto-reveals for already-detected/paid invoices.
+- [x] "Mark as Payment Sent" button opens a dialog that actively polls mempool.space for 60 seconds on a front-loaded tiered schedule (5x2s + 5x3s + 3x5s + 2x10s = 15 polls)
+- [x] Dialog states: polling (progress bar + "Cancel" with helper text), detected ("Your payment has been detected" + OK), timed-out (with mempool.space link)
+- [x] Detected dialog auto-pops on status transition pending/overdue → payment_detected/paid — even if the payer never clicked "Mark as Payment Sent"
+- [x] Progress bar animates to 100% for ~400ms on detection before flipping to the detected view (visual beat for confirmation)
+- [x] Background watcher's fallback-polling first-delay cut from 30s to 10s; WebSocket errors now logged to the browser console
+- [x] `/invoices` list and `/invoices/[id]` detail page live-update via Supabase Realtime — freelancer's row/page flips alongside the payer's confirmation, no manual refresh required
+- [x] `REPLICA IDENTITY FULL` set on `public.invoices` (migration `0006`) so UPDATE events carry all column values for reliable Realtime delivery
+- [x] Realtime hook explicitly sets `supabase.realtime.setAuth(access_token)` before subscribing to avoid RLS silently dropping events, and falls back to `router.refresh()` on `visibilitychange` as a safety net
+
+**Done when:** A payer has an explicit action that tells them the system is actively checking, with a clear resolution (detected or not-yet-detected with a mempool.space link) within 60 seconds, AND a clear "Your payment has been detected" confirmation appears even if they never clicked the button.
+
+---
+
+### ⏳ v1.3.4 — Invoice Duplication
+
+**Branch:** `v1.3.4/invoice-duplication`
 
 - [ ] `Duplicate` action on the `/invoices` per-row dropdown (placeholder 🚩 shipped in v1.3.2)
 - [ ] Server action `duplicateInvoice(id)` — creates a new draft invoice by copying all fields from the source except: `id`, `status` (→ draft), `access_code` (cleared), `btc_txid` (cleared), `created_at` / `updated_at`
@@ -245,6 +263,40 @@
 - [ ] After duplication, redirect the user to `/invoices/[new-id]/edit`
 
 **Done when:** User can duplicate any invoice into a new draft with a single click.
+
+---
+
+### ⏳ v1.3.5 — Dashboard Invoice UX Polish
+
+**Branch:** `v1.3.5/dashboard-invoice-polish`
+
+Small follow-up polish on the owner's dashboard views — the list and the single-invoice detail page. All items are self-contained UI improvements, no schema changes.
+
+**`/invoices` list**
+- [ ] `Unarchive` action on the per-row dropdown for rows with status `archived` (mirrors the existing `Archive` action, reverses status back to its pre-archive value or a sensible default like `pending`)
+- [ ] `Clear Selected` button appears above the data table (next to or within the toolbar row) whenever one or more rows are selected; clicking it clears the row-selection state without affecting filters or other UI state
+
+**`/invoices/[id]` dashboard detail page**
+- [ ] Mirror the `/invoices` per-row dropdown actions as buttons at the bottom of the detail view (status-aware, same conditional logic). Example: Edit (draft only), View public invoice / Copy public link (non-draft), Mark as sent (draft), Mark as paid, Archive / Unarchive, Duplicate, Delete. The existing dropdown stays as-is on the list; this is a second surface for the same actions on the detail page where there is room for explicit buttons.
+
+**Done when:** Archived rows can be restored without leaving the list, selection can be cleared with one click, and every action available from the dropdown is also reachable as an explicit button from the single-invoice view.
+
+---
+
+### ⏳ v1.3.6 — Form & Client View Polish
+
+**Branch:** `v1.3.6/form-and-client-view-polish`
+
+Two small, independent input/display-quality fixes bundled because they each touch a single field or component.
+
+**`/invoices/new` form**
+- [ ] Suppress password-manager browser-extension icons (LastPass, 1Password, etc.) on the following fields, which currently trigger them: Invoice number, Name (sender + client), Email (sender + client), Company (sender + client). Keep them on the Address fields (where autofill is actually useful). Tax ID is already clean and should stay that way. Apply the same suppression pattern that was used on the `/invoices` filter input in v1.3.2 (the `fix: suppress password-manager icons on invoice filter input` commit).
+
+**`/invoice/[id]` public payment view**
+- [ ] Make the BTC amount copyable — click/tap to copy, with the same "copied" feedback used on the `/invoices/[id]` share-link copy button (`src/components/copy-button.tsx`)
+- [ ] Make the BTC address copyable with the same pattern
+
+**Done when:** Password-manager icons no longer clutter the New Invoice form on fields where autofill is nonsense, and the payer can copy the BTC amount and address with a single click from the public view.
 
 ---
 
