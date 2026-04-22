@@ -21,17 +21,6 @@ export async function bulkDelete(ids: string[]) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("id, status")
-    .eq("user_id", user!.id)
-    .in("id", ids);
-
-  const nonDrafts = (invoices ?? []).filter((inv) => inv.status !== "draft");
-  if (nonDrafts.length > 0) {
-    throw new Error("Only draft invoices can be bulk deleted");
-  }
-
   const { error } = await supabase
     .from("invoices")
     .delete()

@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bulk action bar appears when one or more invoices are selected: Archive, Mark as Paid, Delete
 - `archived` status added to the invoice status enum; archived invoices hidden from the main list by default
 - "Show archived" toggle reveals archived invoices inline
-- Bulk delete requires confirmation and only proceeds for draft invoices
+- Bulk delete requires confirmation and removes all selected invoices regardless of status ("This cannot be undone" warning)
 - `bulkArchive`, `bulkDelete`, `bulkMarkPaid` server actions with ownership scoping
 - `InvoiceListClient` client component owns selection state, bulk action bar, and archive toggle
 - Migration `0004_add_archived_status.sql` adds `archived` to the Postgres `invoice_status` enum

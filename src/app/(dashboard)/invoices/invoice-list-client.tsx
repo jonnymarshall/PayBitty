@@ -120,7 +120,7 @@ export function InvoiceListClient({ invoices }: Props) {
       {/* Confirm delete dialog */}
       {confirmDelete && (
         <div id="invoice-list--confirm-delete" className="rounded-lg border border-destructive bg-card px-4 py-3 flex items-center gap-3">
-          <p className="text-sm flex-1">Delete {selected.size} invoice{selected.size !== 1 ? "s" : ""}? Only drafts will be deleted.</p>
+          <p className="text-sm flex-1">Delete {selected.size} invoice{selected.size !== 1 ? "s" : ""}? This cannot be undone.</p>
           <button
             id="invoice-list--confirm-delete-btn"
             onClick={handleDelete}

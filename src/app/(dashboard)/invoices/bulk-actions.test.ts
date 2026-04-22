@@ -71,32 +71,20 @@ describe("bulkArchive", () => {
 });
 
 describe("bulkDelete", () => {
-  it("deletes invoices when all selected are drafts", async () => {
-    const { deleteIn } = makeBulkSupabase({
-      fetchData: [
-        { id: "inv-1", status: "draft" },
-        { id: "inv-2", status: "draft" },
-      ],
-    });
-    await bulkDelete(["inv-1", "inv-2"]);
-    expect(deleteIn).toHaveBeenCalledWith("id", ["inv-1", "inv-2"]);
+  it("deletes all given invoices regardless of status", async () => {
+    const { deleteIn } = makeBulkSupabase();
+    await bulkDelete(["inv-1", "inv-2", "inv-3"]);
+    expect(deleteIn).toHaveBeenCalledWith("id", ["inv-1", "inv-2", "inv-3"]);
   });
 
-  it("throws if any invoice is not a draft", async () => {
-    makeBulkSupabase({
-      fetchData: [
-        { id: "inv-1", status: "draft" },
-        { id: "inv-2", status: "pending" },
-      ],
-    });
-    await expect(bulkDelete(["inv-1", "inv-2"])).rejects.toThrow(/only draft/i);
+  it("scopes the delete to the authenticated user", async () => {
+    const { deleteEq } = makeBulkSupabase({ userId: "user-7" });
+    await bulkDelete(["inv-1"]);
+    expect(deleteEq).toHaveBeenCalledWith("user_id", "user-7");
   });
 
   it("throws when supabase delete returns an error", async () => {
-    makeBulkSupabase({
-      fetchData: [{ id: "inv-1", status: "draft" }],
-      deleteError: { message: "delete failed" },
-    });
+    makeBulkSupabase({ deleteError: { message: "delete failed" } });
     await expect(bulkDelete(["inv-1"])).rejects.toThrow("delete failed");
   });
 });
