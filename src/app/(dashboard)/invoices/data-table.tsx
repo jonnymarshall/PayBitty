@@ -186,9 +186,14 @@ export function InvoiceDataTable({ data }: Props) {
       <div className="flex items-center gap-2 py-4">
         <Input
           id="invoice-data-table--filter"
+          type="search"
           placeholder="Filter by invoice # or client..."
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
+          autoComplete="off"
+          data-lpignore="true"
+          data-form-type="other"
+          data-1p-ignore="true"
           className="max-w-sm"
         />
 
