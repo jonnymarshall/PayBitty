@@ -4,6 +4,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   payment_detected:  { label: "Payment Detected",  className: "bg-blue-500/15 text-blue-400" },
   paid:              { label: "Paid",              className: "bg-green-500/15 text-green-400" },
   overdue:           { label: "Overdue",           className: "bg-destructive/15 text-destructive" },
+  archived:          { label: "Archived",          className: "bg-muted/50 text-muted-foreground/60" },
 };
 
 export function InvoiceStatusBadge({ status, id }: { status: string; id?: string }) {

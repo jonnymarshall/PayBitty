@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
-import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
+import { InvoiceListClient } from "./invoice-list-client";
 
 export default async function InvoicesPage() {
   const supabase = await createClient();
@@ -38,38 +37,7 @@ export default async function InvoicesPage() {
           </Link>
         </div>
       ) : (
-        <div id="invoices-page--list" className="rounded-lg border border-border divide-y divide-border">
-          {invoices.map((invoice) => (
-            <Link
-              key={invoice.id}
-              href={`/invoices/${invoice.id}`}
-              className="proxy-id--invoices-page--list-item flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
-            >
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium flex items-center gap-2">
-                  <span>{invoice.invoice_number || "—"}</span>
-                  {invoice.client_name && (
-                    <span className="font-normal text-muted-foreground">{invoice.client_name}</span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {invoice.due_date
-                    ? `Due ${format(new Date(invoice.due_date), "MMM d, yyyy")}`
-                    : "—"}
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-medium">
-                  {new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: invoice.currency,
-                  }).format(invoice.total_fiat)}
-                </span>
-                <InvoiceStatusBadge status={invoice.status} />
-              </div>
-            </Link>
-          ))}
-        </div>
+        <InvoiceListClient invoices={invoices} />
       )}
     </div>
   );
