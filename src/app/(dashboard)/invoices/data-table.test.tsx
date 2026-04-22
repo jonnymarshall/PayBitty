@@ -7,6 +7,7 @@ vi.mock("./bulk-actions", () => ({
   bulkArchive: vi.fn().mockResolvedValue(undefined),
   bulkDelete: vi.fn().mockResolvedValue(undefined),
   bulkMarkPaid: vi.fn().mockResolvedValue(undefined),
+  bulkUnarchive: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./actions", () => ({
   publishInvoice: vi.fn().mockResolvedValue(undefined),
@@ -16,7 +17,7 @@ vi.mock("./use-invoice-realtime", () => ({
   useInvoiceRealtime: vi.fn(),
 }));
 
-import { bulkArchive, bulkDelete, bulkMarkPaid } from "./bulk-actions";
+import { bulkArchive, bulkDelete, bulkMarkPaid, bulkUnarchive } from "./bulk-actions";
 import { publishInvoice, duplicateInvoice } from "./actions";
 
 const MOCK_INVOICES = [
@@ -74,6 +75,39 @@ describe("InvoiceDataTable — filtering", () => {
     });
     expect(screen.getByText("Acme")).toBeInTheDocument();
     expect(screen.queryByText("Globex")).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDataTable — clear selected", () => {
+  it("does not render the 'Clear selected' button when no rows are selected", () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    expect(screen.queryByRole("button", { name: /clear selected/i })).not.toBeInTheDocument();
+  });
+
+  it("renders the 'Clear selected' button once a row is selected", () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const rowCheckboxes = screen.getAllByRole("checkbox", { name: /select row/i });
+    fireEvent.click(rowCheckboxes[0]);
+    expect(screen.getByRole("button", { name: /clear selected/i })).toBeInTheDocument();
+  });
+
+  it("clears row selection when clicked and preserves filter and archive-toggle state", () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const filterInput = screen.getByPlaceholderText(/filter by invoice/i) as HTMLInputElement;
+    fireEvent.change(filterInput, { target: { value: "Acme" } });
+    fireEvent.click(screen.getByRole("button", { name: /show archived/i }));
+    const rowCheckboxes = screen.getAllByRole("checkbox", { name: /select row/i });
+    fireEvent.click(rowCheckboxes[0]);
+    // After selection: bulk actions button should be enabled and Clear selected visible
+    expect(bulkActionsBtn()).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /clear selected/i }));
+    // After clearing: bulk actions disabled again, button gone
+    expect(bulkActionsBtn()).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /clear selected/i })).not.toBeInTheDocument();
+    // filter preserved
+    expect(filterInput.value).toBe("Acme");
+    // archive toggle preserved (button now reads "Hide archived")
+    expect(screen.getByRole("button", { name: /hide archived/i })).toBeInTheDocument();
   });
 });
 
@@ -160,5 +194,34 @@ describe("InvoiceDataTable — per-row actions", () => {
     fireEvent.click(openMenuButtons[1]); // inv-2 pending
     fireEvent.click(await screen.findByRole("menuitem", { name: /duplicate/i }));
     await waitFor(() => expect(duplicateInvoice).toHaveBeenCalledWith("inv-2"));
+  });
+
+  it("does not show 'Archive' on draft rows", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[0]); // inv-1 draft
+    // the dropdown is open; confirm neither Archive nor Unarchive is present for drafts
+    expect(await screen.findByRole("menuitem", { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^archive$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^unarchive$/i })).not.toBeInTheDocument();
+  });
+
+  it("shows 'Unarchive' (not 'Archive') on archived rows", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    fireEvent.click(screen.getByRole("button", { name: /show archived/i }));
+    // archived row (inv-4) is now the 4th row (index 3)
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[3]);
+    expect(await screen.findByRole("menuitem", { name: /^unarchive$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^archive$/i })).not.toBeInTheDocument();
+  });
+
+  it("calls bulkUnarchive when 'Unarchive' is clicked on an archived row", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    fireEvent.click(screen.getByRole("button", { name: /show archived/i }));
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[3]); // inv-4 archived
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^unarchive$/i }));
+    await waitFor(() => expect(bulkUnarchive).toHaveBeenCalledWith(["inv-4"]));
   });
 });

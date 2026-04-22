@@ -29,6 +29,7 @@ export interface RowActions {
   onMarkSent: (id: string) => void;
   onMarkPaid: (id: string) => void;
   onArchive: (id: string) => void;
+  onUnarchive: (id: string) => void;
   onDelete: (id: string) => void;
   onCopyPublicLink: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -184,7 +185,12 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                   Mark as paid
                 </DropdownMenuItem>
               )}
-              {!isArchived && (
+              {isArchived && (
+                <DropdownMenuItem onClick={() => actions.onUnarchive(invoice.id)}>
+                  Unarchive
+                </DropdownMenuItem>
+              )}
+              {!isArchived && !isDraft && (
                 <DropdownMenuItem onClick={() => actions.onArchive(invoice.id)}>
                   Archive
                 </DropdownMenuItem>

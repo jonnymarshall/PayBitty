@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-04-22
+
+### Added
+- `Unarchive` action on the `/invoices` per-row dropdown for archived rows — reverts status to `pending` so the invoice rejoins the main list.
+- `Clear Selected` button in the `/invoices` toolbar — visible whenever one or more rows are selected; clicking it clears the row-selection state without affecting filters or the archived toggle.
+- `/invoices/[id]` dashboard detail page now mirrors every per-row dropdown action as an explicit button row at the bottom of the page (status-aware): Edit (draft), View public invoice + Copy public link (non-draft), Mark as sent (draft), Mark as paid, Archive / Unarchive, Duplicate, Delete. The existing dropdown on the list stays as-is; the detail page gets its own button surface.
+
+### Changed
+- Unarchiving now restores the original status (a paid invoice comes back as paid, an overdue one comes back as overdue) instead of defaulting to `pending`. Migration `0007_add_pre_archive_status.sql` adds a nullable `pre_archive_status` column that `bulkArchive` captures and `bulkUnarchive` consumes. Legacy archived rows with a NULL `pre_archive_status` fall back to `pending` on unarchive.
+- Removed the redundant "Copy public link" button from the `/invoices/[id]` detail action row. The page's "Share with client" section already has a dedicated copy button next to the invoice URL, so the duplicate action row button was noise.
+
+### Fixed
+- Archiving a draft invoice no longer throws a `duplicate key value violates unique constraint "invoices_btc_address_active_idx"` error. The Archive action is now hidden on drafts in both the list dropdown and the detail page, and `bulkArchive` silently excludes drafts server-side (a pre-fetch filter on `status NOT IN ('draft','archived')`) as defense-in-depth for mixed bulk selections. Drafts aren't a valid thing to archive anyway — use Delete instead.
+
 ## [1.3.4] - 2026-04-22
 
 ### Added
