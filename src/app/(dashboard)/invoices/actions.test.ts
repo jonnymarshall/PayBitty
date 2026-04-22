@@ -5,7 +5,8 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 
 import { createClient } from "@/lib/supabase/server";
-import { saveDraft, publishInvoice, deleteDraft, markOverdue } from "./actions";
+import { redirect } from "next/navigation";
+import { saveDraft, publishInvoice, deleteDraft, markOverdue, duplicateInvoice } from "./actions";
 
 const VALID_DRAFT = {
   client_name: "Acme Corp",
@@ -71,7 +72,7 @@ function makeSupabase({
     })),
   } as unknown as AnySupabase);
 
-  return { insertSingle, updateEq, deleteEq, maybeSingle };
+  return { insertSingle, insertChain, updateEq, deleteEq, maybeSingle };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -129,5 +130,93 @@ describe("markOverdue", () => {
     });
     await markOverdue("inv-1");
     expect(updateEq).toHaveBeenCalled();
+  });
+});
+
+describe("duplicateInvoice", () => {
+  const SOURCE_INVOICE = {
+    id: "inv-src",
+    user_id: "user-1",
+    status: "paid",
+    invoice_number: "INV-001",
+    your_name: "Freelancer",
+    your_email: "me@example.com",
+    your_company: "My Co",
+    your_address: "1 Street",
+    your_tax_id: "TAX-1",
+    client_name: "Acme",
+    client_email: "acme@example.com",
+    client_company: "Acme Co",
+    client_address: "2 Street",
+    client_tax_id: "TAX-2",
+    line_items: [{ description: "Work", quantity: 1, unit_price: 1000 }],
+    tax_percent: 10,
+    tax_fiat: 100,
+    subtotal_fiat: 1000,
+    total_fiat: 1100,
+    currency: "USD",
+    accepts_bitcoin: true,
+    btc_address: "bc1qtest",
+    due_date: "2026-06-01",
+    access_code: "LETMEIN1",
+    btc_txid: "txid-should-clear",
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-02T00:00:00Z",
+  };
+
+  it("inserts a new draft invoice with status=draft, cleared btc_address / btc_txid, and preserved access_code", async () => {
+    const { insertChain, insertSingle } = makeSupabase({
+      fetchData: SOURCE_INVOICE,
+      insertData: { id: "inv-new", status: "draft" },
+    });
+
+    await duplicateInvoice("inv-src");
+
+    const insertArg = insertChain.mock.calls[0][0];
+    expect(insertArg.status).toBe("draft");
+    expect(insertArg.access_code).toBe("LETMEIN1");
+    expect(insertArg.btc_address).toBeNull();
+    expect(insertArg.btc_txid).toBeNull();
+    expect(insertArg.user_id).toBe("user-1");
+    expect(insertArg.client_name).toBe("Acme");
+    expect(insertArg.line_items).toEqual(SOURCE_INVOICE.line_items);
+    expect(insertArg).not.toHaveProperty("id");
+    expect(insertArg).not.toHaveProperty("created_at");
+    expect(insertArg).not.toHaveProperty("updated_at");
+    expect(insertSingle).toHaveBeenCalled();
+  });
+
+  it('appends " (copy)" to invoice_number when source has one', async () => {
+    const { insertChain } = makeSupabase({
+      fetchData: { ...SOURCE_INVOICE, invoice_number: "INV-001" },
+      insertData: { id: "inv-new" },
+    });
+    await duplicateInvoice("inv-src");
+    expect(insertChain.mock.calls[0][0].invoice_number).toBe("INV-001 (copy)");
+  });
+
+  it("leaves invoice_number null when source has no number", async () => {
+    const { insertChain } = makeSupabase({
+      fetchData: { ...SOURCE_INVOICE, invoice_number: null },
+      insertData: { id: "inv-new" },
+    });
+    await duplicateInvoice("inv-src");
+    expect(insertChain.mock.calls[0][0].invoice_number).toBeNull();
+  });
+
+  it("redirects to /invoices/[new-id]/edit after creating the draft", async () => {
+    makeSupabase({
+      fetchData: SOURCE_INVOICE,
+      insertData: { id: "inv-new" },
+    });
+    await duplicateInvoice("inv-src");
+    expect(redirect).toHaveBeenCalledWith("/invoices/inv-new/edit");
+  });
+
+  it("throws when the invoice belongs to another user", async () => {
+    makeSupabase({
+      fetchData: { ...SOURCE_INVOICE, user_id: "someone-else" },
+    });
+    await expect(duplicateInvoice("inv-src")).rejects.toThrow(/not found/i);
   });
 });
