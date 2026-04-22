@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2026-04-22
+
+### Added
+- `/invoice/[id]` public payment view: copy button next to the BTC amount — one-click copy of the exact displayed amount (e.g. `0.01`, trimmed of trailing zeros) with the same "Copied" feedback used on the share-link copy button.
+- `/invoice/[id]` public payment view: copy button next to the BTC address — one-click copy of the full address with the same "Copied" feedback.
+- `CopyButton` gains an optional `label` prop that sets both `aria-label` and `title`, so multiple copy buttons on the same view remain distinguishable to screen readers and end users.
+
+### Notes
+- Password-manager icon suppression on `/invoices/new` identity fields was attempted (`data-lpignore`, `data-1p-ignore`, `autoComplete="off"`, `data-form-type="other"`) but reverted — LastPass injects its icon regardless when a field's label/id matches its autofill heuristics (name/email/company). The only workarounds that work (`type="search"` on identity fields, or dropping `type="email"`) break HTML semantics and native validation, so this item is marked won't-fix in the roadmap.
+
 ## [1.3.5] - 2026-04-22
 
 ### Added
