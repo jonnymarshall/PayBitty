@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { computeInvoiceTotals, isValidBtcAddress, LineItem } from "@/lib/invoices";
+import { sendInvoicePublishedEmail } from "@/lib/email/send";
 
 export interface InvoicePayload {
   invoice_number?: string;
@@ -154,6 +156,23 @@ export async function publishInvoice(invoiceId: string) {
     .eq("id", invoiceId);
 
   if (error) throw new Error(error.message);
+
+  if (invoice.client_email) {
+    await sendInvoicePublishedEmail({
+      to: invoice.client_email,
+      senderName: invoice.your_name || invoice.your_company || invoice.your_email || "Paybitty user",
+      clientName: invoice.client_name || "there",
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      totalFiat: invoice.total_fiat,
+      currency: invoice.currency,
+      accessCode: invoice.access_code,
+      dueDateDisplay: invoice.due_date
+        ? format(new Date(invoice.due_date + "T12:00:00"), "MMMM d, yyyy")
+        : null,
+    });
+  }
+
   revalidatePath("/dashboard");
   revalidatePath(`/invoices/${invoiceId}`);
 }

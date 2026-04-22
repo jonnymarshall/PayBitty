@@ -1,0 +1,86 @@
+import { describe, it, expect } from "vitest";
+import { PDFParse } from "pdf-parse";
+import type { Invoice } from "@/lib/invoice-public";
+import { renderInvoicePdf } from "./invoice-pdf";
+
+const baseInvoice: Invoice = {
+  id: "inv-id-1",
+  user_id: "user-1",
+  invoice_number: "INV-2026-001",
+  your_name: "Ada Lovelace",
+  your_email: "ada@example.com",
+  your_company: "Analytical Ltd",
+  your_address: "1 Tower Bridge, London",
+  your_tax_id: "GB123456789",
+  client_name: "Charles Babbage",
+  client_email: "charles@example.com",
+  client_company: "Difference Engine Co",
+  client_address: "10 Bloomsbury, London",
+  client_tax_id: "GB987654321",
+  line_items: [
+    { description: "Analytical engine design", quantity: 10, unit_price: 500 },
+    { description: "Consulting hours", quantity: 4, unit_price: 250 },
+  ],
+  subtotal_fiat: 6000,
+  tax_fiat: 1200,
+  tax_percent: 20,
+  total_fiat: 7200,
+  currency: "USD",
+  accepts_bitcoin: true,
+  btc_address: "bc1qexampleaddressforinvoice000000000000",
+  btc_txid: null,
+  status: "pending",
+  access_code: null,
+  due_date: "2026-05-15",
+  created_at: "2026-04-15T10:00:00Z",
+  updated_at: "2026-04-15T10:00:00Z",
+};
+
+async function textFromPdf(invoice: Invoice): Promise<string> {
+  const buf = await renderInvoicePdf(invoice);
+  const parser = new PDFParse({ data: new Uint8Array(buf) });
+  const result = await parser.getText();
+  await parser.destroy();
+  return result.text;
+}
+
+describe("renderInvoicePdf", () => {
+  it("includes the invoice number", async () => {
+    const text = await textFromPdf({ ...baseInvoice, invoice_number: "INV-2026-042" });
+    expect(text).toContain("INV-2026-042");
+  });
+
+  it("includes the subtotal, tax, and total formatted as currency", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("$6,000.00");
+    expect(text).toContain("$1,200.00");
+    expect(text).toContain("$7,200.00");
+  });
+
+  it("includes sender and client names", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("Ada Lovelace");
+    expect(text).toContain("Charles Babbage");
+  });
+
+  it("includes every line item description", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("Analytical engine design");
+    expect(text).toContain("Consulting hours");
+  });
+
+  it("includes the BTC address when accepts_bitcoin is true", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("bc1qexampleaddressforinvoice000000000000");
+  });
+
+  it("omits BTC address when accepts_bitcoin is false", async () => {
+    const text = await textFromPdf({ ...baseInvoice, accepts_bitcoin: false });
+    expect(text).not.toContain("bc1qexampleaddressforinvoice000000000000");
+  });
+
+  it("includes the due date", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("May 15, 2026");
+  });
+});

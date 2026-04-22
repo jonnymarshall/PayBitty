@@ -300,17 +300,17 @@ Two small, independent input/display-quality fixes bundled because they each tou
 
 ---
 
-### ⏳ v1.4 — PDF Generation + Email Notifications
+### ✅ v1.4 — PDF Generation + Email Notifications
 
 **Branch:** `v1.4/pdf-and-email`
 
-- [ ] On login: sweep all `pending` / `payment_detected` invoices for the user to catch missed events (deferred from v1.3)
-- [ ] Resend + React Email configured
-- [ ] Email: invoice link + access code sent to client on publish
-- [ ] Email: payment detected notification to creator (0-conf)
-- [ ] Email: payment confirmed notification to creator (1+ conf)
-- [ ] PDF generation with `@react-pdf/renderer` (server-side)
-- [ ] PDF download available from invoice detail view
+- [x] On login: sweep all `pending` / `payment_detected` invoices for the user to catch missed events (deferred from v1.3)
+- [x] Resend + React Email configured
+- [x] Email: invoice link + access code sent to client on publish
+- [x] Email: payment detected notification to creator (0-conf)
+- [x] Email: payment confirmed notification to creator (1+ conf)
+- [x] PDF generation with `@react-pdf/renderer` (server-side)
+- [x] PDF download available from invoice detail view
 
 **Done when:** All transactional emails send correctly and PDFs are downloadable.
 
@@ -437,3 +437,15 @@ Two small, independent input/display-quality fixes bundled because they each tou
 - Billing (v2.0+) is fully deferred until v1 is stable and in use.
 - xpub / HD wallet support is permanently rejected — security risk if the key leaks.
 - Light mode and colour scheme overhaul are tracked in v1.5.
+
+---
+
+## Pre-deployment Checklist
+
+Project is not yet linked to Vercel. Before first deployment, run `vercel link` and mirror all `.env` values into Vercel project env vars (Production, Preview, Development):
+
+- [ ] `NEXT_PUBLIC_SUPABASE_URL`
+- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- [ ] `SUPABASE_SERVICE_ROLE_KEY` (if used server-side)
+- [ ] `RESEND_API_KEY` (added v1.4)
+- [ ] Any other secrets present in `.env` at deploy time
