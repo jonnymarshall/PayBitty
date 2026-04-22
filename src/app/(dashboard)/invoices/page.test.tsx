@@ -67,9 +67,9 @@ describe("InvoicesPage", () => {
     expect(screen.getByText("INV-002")).toBeInTheDocument();
   });
 
-  it("shows due date with 'Due' prefix when due_date is present", async () => {
+  it("shows formatted due date in the Due Date column", async () => {
     render(await InvoicesPage());
-    expect(screen.getByText(/^Due /)).toBeInTheDocument();
+    expect(screen.getByText(/apr(il)? 30,? 2026/i)).toBeInTheDocument();
   });
 
   it("shows a dash when invoice has no due_date", async () => {

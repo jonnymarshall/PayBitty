@@ -8,14 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.3.2] - 2026-04-21
 
 ### Added
-- Multi-select checkboxes on the `/invoices` list with a select-all header checkbox
-- Bulk action bar appears when one or more invoices are selected: Archive, Mark as Paid, Delete
-- `archived` status added to the invoice status enum; archived invoices hidden from the main list by default
-- "Show archived" toggle reveals archived invoices inline
-- Bulk delete requires confirmation and removes all selected invoices regardless of status ("This cannot be undone" warning)
+- `/invoices` list rebuilt as a shadcn Data Table (TanStack Table) with proper column headers, per-column sorting, row selection checkboxes, and column visibility toggle
+- Always-visible toolbar: client-name filter input, Bulk actions dropdown (disabled until rows are selected), Show/Hide archived toggle, Columns dropdown
+- Sortable columns: Invoice, Client, Due Date, Amount
+- Per-row actions menu (⋯) with View / Mark as paid / Archive / Delete
+- Pagination footer with "X of N row(s) selected" and Previous/Next controls
+- Bulk actions (Archive, Mark as Paid, Delete) operate on selected rows; Delete shows an inline "This cannot be undone" confirmation
+- `archived` status added to the invoice status enum; archived rows hidden by default with a toggle to reveal them
 - `bulkArchive`, `bulkDelete`, `bulkMarkPaid` server actions with ownership scoping
-- `InvoiceListClient` client component owns selection state, bulk action bar, and archive toggle
 - Migration `0004_add_archived_status.sql` adds `archived` to the Postgres `invoice_status` enum
+- shadcn components: `table`, `checkbox`, `dropdown-menu`, `input`; dependency `@tanstack/react-table`
 
 ## [1.3.1] - 2026-04-21
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { InvoiceListClient } from "./invoice-list-client";
+import { InvoiceDataTable } from "./data-table";
 
 export default async function InvoicesPage() {
   const supabase = await createClient();
@@ -37,7 +37,7 @@ export default async function InvoicesPage() {
           </Link>
         </div>
       ) : (
-        <InvoiceListClient invoices={invoices} />
+        <InvoiceDataTable data={invoices} />
       )}
     </div>
   );
