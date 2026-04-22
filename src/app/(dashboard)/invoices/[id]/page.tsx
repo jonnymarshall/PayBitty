@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { InvoiceDates } from "@/components/invoice-dates";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
 import { PaymentWatcher } from "@/app/invoice/[id]/payment-watcher";
 import { CopyButton } from "@/components/copy-button";
@@ -44,6 +45,9 @@ export default async function InvoiceDetailPage({
           {invoice.client_email && (
             <p className="text-sm text-muted-foreground">{invoice.client_email}</p>
           )}
+          <div className="mt-2">
+            <InvoiceDates createdAt={invoice.created_at} dueDate={invoice.due_date} />
+          </div>
         </div>
         {invoice.accepts_bitcoin && invoice.btc_address ? (
           <PaymentWatcher
@@ -158,13 +162,7 @@ export default async function InvoiceDetailPage({
             <span>${Number(invoice.tax_fiat).toFixed(2)}</span>
           </div>
         )}
-        {invoice.due_date && (
-          <div className="flex justify-between text-muted-foreground">
-            <span>Due</span>
-            <span>{new Date(invoice.due_date).toLocaleDateString()}</span>
-          </div>
-        )}
-        <div className="flex justify-between font-semibold text-base pt-1 border-t border-border">
+<div className="flex justify-between font-semibold text-base pt-1 border-t border-border">
           <span>Total</span>
           <span>${Number(invoice.total_fiat).toFixed(2)} {invoice.currency}</span>
         </div>

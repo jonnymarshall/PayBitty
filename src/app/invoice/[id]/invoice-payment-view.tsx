@@ -2,8 +2,8 @@ import { Invoice } from "@/lib/invoice-public";
 import { fiatToBtc, buildBip21Uri } from "@/lib/btc-qr";
 import { BtcQrCode } from "@/components/btc-qr-code";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
+import { InvoiceDates } from "@/components/invoice-dates";
 import { PaymentWatcher } from "./payment-watcher";
-import { format } from "date-fns";
 import { getMempoolBaseUrl } from "@/lib/btc-network";
 
 interface Props {
@@ -41,11 +41,7 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
             <h1 id="invoice-view--title" className="text-2xl font-semibold">
               {invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : "Invoice"}
             </h1>
-            {invoice.due_date && (
-              <p id="invoice-view--due-date" className="text-sm text-muted-foreground">
-                Due {format(new Date(invoice.due_date), "MMMM d, yyyy")}
-              </p>
-            )}
+            <InvoiceDates createdAt={invoice.created_at} dueDate={invoice.due_date} />
           </div>
           {invoice.accepts_bitcoin && invoice.btc_address ? (
             <PaymentWatcher

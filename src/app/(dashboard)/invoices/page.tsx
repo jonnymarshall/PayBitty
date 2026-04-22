@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
 
@@ -52,7 +53,9 @@ export default async function InvoicesPage() {
                   )}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(invoice.created_at).toLocaleDateString()}
+                  {invoice.due_date
+                    ? `Due ${format(new Date(invoice.due_date), "MMM d, yyyy")}`
+                    : "—"}
                 </p>
               </div>
               <div className="flex items-center gap-4">

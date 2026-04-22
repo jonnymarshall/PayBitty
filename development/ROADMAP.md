@@ -209,13 +209,13 @@
 
 ---
 
-### ⏳ v1.3.1 — Invoice View & List Date Polish
+### ✅ v1.3.1 — Invoice View & List Date Polish
 
 **Branch:** `v1.3.1/invoice-date-polish`
 
-- [ ] Invoice detail page (user view): add "Date Sent" (created/published date) and "Date Due" — currently shows no date information
-- [ ] Client payment view: already shows "Due" date — add "Date Sent" alongside it for full context
-- [ ] `/invoices` list: replace creation date with due date; label it "Due \<date\>" to avoid ambiguity (invoices with no due date show a dash or nothing)
+- [x] Invoice detail page (user view): add "Date Sent" (created/published date) and "Date Due" — currently shows no date information
+- [x] Client payment view: already shows "Due" date — add "Date Sent" alongside it for full context
+- [x] `/invoices` list: replace creation date with due date; label it "Due \<date\>" to avoid ambiguity (invoices with no due date show a dash or nothing)
 
 **Done when:** Both views clearly surface sent and due dates; the invoice list shows due date with unambiguous label.
 
