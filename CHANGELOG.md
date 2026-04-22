@@ -9,15 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `/invoices` list rebuilt as a shadcn Data Table (TanStack Table) with proper column headers, per-column sorting, row selection checkboxes, and column visibility toggle
-- Always-visible toolbar: client-name filter input, Bulk actions dropdown (disabled until rows are selected), Show/Hide archived toggle, Columns dropdown
-- Sortable columns: Invoice, Client, Due Date, Amount
-- Per-row actions menu (⋯) with View / Mark as paid / Archive / Delete
-- Pagination footer with "X of N row(s) selected" and Previous/Next controls
-- Bulk actions (Archive, Mark as Paid, Delete) operate on selected rows; Delete shows an inline "This cannot be undone" confirmation
+- Always-visible toolbar: filter input (searches invoice # and client), Bulk actions dropdown (disabled until rows are selected), Show/Hide archived toggle, Columns dropdown
+- Columns in order: Invoice, Client, Date Sent, Date Due, Amount, Status (all except Status sortable)
+- Per-row actions menu (⋯) with status-aware items: View invoice, Edit (draft), View public invoice / Copy public link (non-draft), Mark as sent (draft), Mark as paid, Archive, Duplicate 🚩 (placeholder, tracked in v1.3.3), Delete
+- Bulk actions dropdown: Mark as paid, Archive, Delete (same order as per-row actions)
+- Delete confirmation now uses shadcn AlertDialog instead of the native browser prompt
+- Pagination footer with "X of N invoices selected" and Previous/Next controls
 - `archived` status added to the invoice status enum; archived rows hidden by default with a toggle to reveal them
 - `bulkArchive`, `bulkDelete`, `bulkMarkPaid` server actions with ownership scoping
 - Migration `0004_add_archived_status.sql` adds `archived` to the Postgres `invoice_status` enum
-- shadcn components: `table`, `checkbox`, `dropdown-menu`, `input`; dependency `@tanstack/react-table`
+- shadcn components: `table`, `checkbox`, `dropdown-menu`, `input`, `alert-dialog`; dependency `@tanstack/react-table`
 
 ## [1.3.1] - 2026-04-21
 

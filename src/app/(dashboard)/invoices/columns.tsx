@@ -23,12 +23,29 @@ export interface InvoiceRow {
   currency: string;
   status: string;
   due_date: string | null;
+  created_at: string;
 }
 
 export interface RowActions {
-  onArchive: (id: string) => void;
+  onMarkSent: (id: string) => void;
   onMarkPaid: (id: string) => void;
+  onArchive: (id: string) => void;
   onDelete: (id: string) => void;
+  onCopyPublicLink: (id: string) => void;
+  onDuplicate: (id: string) => void;
+}
+
+function sortableHeader(label: string) {
+  return ({ column }: { column: { toggleSorting: (desc: boolean) => void; getIsSorted: () => false | "asc" | "desc" } }) => (
+    <Button
+      variant="ghost"
+      onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+      className="-ml-3 h-8"
+    >
+      {label}
+      <ArrowUpDown className="ml-2 h-4 w-4" />
+    </Button>
+  );
 }
 
 export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
@@ -54,16 +71,7 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
     },
     {
       accessorKey: "invoice_number",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-3 h-8"
-        >
-          Invoice
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
+      header: sortableHeader("Invoice"),
       cell: ({ row }) => {
         const invoice = row.original;
         return (
@@ -78,16 +86,7 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
     },
     {
       accessorKey: "client_name",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-3 h-8"
-        >
-          Client
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
+      header: sortableHeader("Client"),
       cell: ({ row }) => (
         <span className="text-muted-foreground">
           {row.original.client_name || "—"}
@@ -95,17 +94,17 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
       ),
     },
     {
-      accessorKey: "due_date",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="-ml-3 h-8"
-        >
-          Due Date
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
+      accessorKey: "created_at",
+      header: sortableHeader("Date Sent"),
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {format(new Date(row.original.created_at), "MMM d, yyyy")}
+        </span>
       ),
+    },
+    {
+      accessorKey: "due_date",
+      header: sortableHeader("Date Due"),
       cell: ({ row }) => {
         const d = row.original.due_date;
         return (
@@ -113,15 +112,6 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
             {d ? format(new Date(d + "T12:00:00"), "MMM d, yyyy") : "—"}
           </span>
         );
-      },
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <InvoiceStatusBadge status={row.original.status} />,
-      filterFn: (row, columnId, filterValue: string[]) => {
-        if (!filterValue || filterValue.length === 0) return true;
-        return filterValue.includes(row.getValue(columnId) as string);
       },
     },
     {
@@ -147,10 +137,21 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
       },
     },
     {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => <InvoiceStatusBadge status={row.original.status} />,
+      filterFn: (row, columnId, filterValue: string[]) => {
+        if (!filterValue || filterValue.length === 0) return true;
+        return filterValue.includes(row.getValue(columnId) as string);
+      },
+    },
+    {
       id: "actions",
       enableHiding: false,
       cell: ({ row }) => {
         const invoice = row.original;
+        const isDraft = invoice.status === "draft";
+        const isArchived = invoice.status === "archived";
         return (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -161,21 +162,39 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                 </Button>
               }
             />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                render={<Link href={`/invoices/${invoice.id}`}>View invoice</Link>}
-              />
+            <DropdownMenuContent align="end" className="w-56 whitespace-nowrap">
+              <DropdownMenuItem render={<Link href={`/invoices/${invoice.id}`}>View invoice</Link>} />
+              {isDraft && (
+                <DropdownMenuItem render={<Link href={`/invoices/${invoice.id}/edit`}>Edit</Link>} />
+              )}
+              {!isDraft && (
+                <>
+                  <DropdownMenuItem render={<Link href={`/invoice/${invoice.id}`} target="_blank">View public invoice</Link>} />
+                  <DropdownMenuItem onClick={() => actions.onCopyPublicLink(invoice.id)}>
+                    Copy public link
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuSeparator />
-              {invoice.status !== "paid" && (
+              {isDraft && (
+                <DropdownMenuItem onClick={() => actions.onMarkSent(invoice.id)}>
+                  Mark as sent
+                </DropdownMenuItem>
+              )}
+              {invoice.status !== "paid" && !isDraft && (
                 <DropdownMenuItem onClick={() => actions.onMarkPaid(invoice.id)}>
                   Mark as paid
                 </DropdownMenuItem>
               )}
-              {invoice.status !== "archived" && (
+              {!isArchived && (
                 <DropdownMenuItem onClick={() => actions.onArchive(invoice.id)}>
                   Archive
                 </DropdownMenuItem>
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => actions.onDuplicate(invoice.id)}>
+                Duplicate 🚩
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => actions.onDelete(invoice.id)}
                 className="text-destructive focus:text-destructive"

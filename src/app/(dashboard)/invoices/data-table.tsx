@@ -28,10 +28,31 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { bulkArchive, bulkDelete, bulkMarkPaid } from "./bulk-actions";
+import { publishInvoice } from "./actions";
 import { buildColumns, InvoiceRow } from "./columns";
+
+const COLUMN_LABELS: Record<string, string> = {
+  invoice_number: "Invoice",
+  client_name: "Client",
+  created_at: "Date Sent",
+  due_date: "Date Due",
+  total_fiat: "Amount",
+  status: "Status",
+};
 
 interface Props {
   data: InvoiceRow[];
@@ -43,45 +64,43 @@ export function InvoiceDataTable({ data }: Props) {
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([
     { id: "status", value: ["draft", "pending", "payment_detected", "paid", "overdue"] },
   ]);
+  const [globalFilter, setGlobalFilter] = React.useState("");
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
   const [showArchived, setShowArchived] = React.useState(false);
   const [pending, setPending] = React.useState(false);
-  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<string[] | null>(null);
+
+  const copyPublicLink = React.useCallback((id: string) => {
+    const url = `${window.location.origin}/invoice/${id}`;
+    navigator.clipboard.writeText(url).catch(() => {});
+  }, []);
+
+  const runRowAction = React.useCallback(
+    async (fn: () => Promise<unknown>) => {
+      setPending(true);
+      try {
+        await fn();
+        router.refresh();
+      } finally {
+        setPending(false);
+      }
+    },
+    [router]
+  );
 
   const columns = React.useMemo(
     () =>
       buildColumns({
-        onArchive: async (id) => {
-          setPending(true);
-          try {
-            await bulkArchive([id]);
-            router.refresh();
-          } finally {
-            setPending(false);
-          }
-        },
-        onMarkPaid: async (id) => {
-          setPending(true);
-          try {
-            await bulkMarkPaid([id]);
-            router.refresh();
-          } finally {
-            setPending(false);
-          }
-        },
-        onDelete: async (id) => {
-          if (!window.confirm("Delete this invoice? This cannot be undone.")) return;
-          setPending(true);
-          try {
-            await bulkDelete([id]);
-            router.refresh();
-          } finally {
-            setPending(false);
-          }
-        },
+        onMarkSent: (id) => runRowAction(() => publishInvoice(id)),
+        onMarkPaid: (id) => runRowAction(() => bulkMarkPaid([id])),
+        onArchive: (id) => runRowAction(() => bulkArchive([id])),
+        onDelete: (id) => setDeleteTarget([id]),
+        onCopyPublicLink: copyPublicLink,
+        // Placeholder — real implementation tracked in v1.3.3 on the roadmap
+        onDuplicate: () => {},
       }),
-    [router]
+    [runRowAction, copyPublicLink]
   );
 
   const table = useReactTable({
@@ -89,6 +108,7 @@ export function InvoiceDataTable({ data }: Props) {
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -96,9 +116,17 @@ export function InvoiceDataTable({ data }: Props) {
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     getRowId: (row) => row.id,
+    globalFilterFn: (row, _columnId, filterValue: string) => {
+      const q = filterValue.trim().toLowerCase();
+      if (!q) return true;
+      const num = row.original.invoice_number?.toLowerCase() ?? "";
+      const client = row.original.client_name?.toLowerCase() ?? "";
+      return num.includes(q) || client.includes(q);
+    },
     state: {
       sorting,
       columnFilters,
+      globalFilter,
       columnVisibility,
       rowSelection,
     },
@@ -107,24 +135,12 @@ export function InvoiceDataTable({ data }: Props) {
   const selectedIds = Object.keys(rowSelection);
   const hasSelection = selectedIds.length > 0;
 
-  // Keep the status filter in sync with the archive toggle
   React.useEffect(() => {
     const statusValues = showArchived
       ? ["draft", "pending", "payment_detected", "paid", "overdue", "archived"]
       : ["draft", "pending", "payment_detected", "paid", "overdue"];
     table.getColumn("status")?.setFilterValue(statusValues);
   }, [showArchived, table]);
-
-  async function handleBulkArchive() {
-    setPending(true);
-    try {
-      await bulkArchive(selectedIds);
-      setRowSelection({});
-      router.refresh();
-    } finally {
-      setPending(false);
-    }
-  }
 
   async function handleBulkMarkPaid() {
     setPending(true);
@@ -137,12 +153,28 @@ export function InvoiceDataTable({ data }: Props) {
     }
   }
 
-  async function handleBulkDelete() {
+  async function handleBulkArchive() {
     setPending(true);
     try {
-      await bulkDelete(selectedIds);
+      await bulkArchive(selectedIds);
       setRowSelection({});
-      setConfirmDelete(false);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setPending(true);
+    try {
+      await bulkDelete(deleteTarget);
+      setRowSelection((prev) => {
+        const next: Record<string, boolean> = { ...(prev as Record<string, boolean>) };
+        deleteTarget.forEach((id) => delete next[id]);
+        return next;
+      });
+      setDeleteTarget(null);
       router.refresh();
     } finally {
       setPending(false);
@@ -155,15 +187,13 @@ export function InvoiceDataTable({ data }: Props) {
       <div className="flex items-center gap-2 py-4">
         <Input
           id="invoice-data-table--filter"
-          placeholder="Filter by client..."
-          value={(table.getColumn("client_name")?.getFilterValue() as string) ?? ""}
-          onChange={(event) =>
-            table.getColumn("client_name")?.setFilterValue(event.target.value)
-          }
+          placeholder="Filter by invoice # or client..."
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
           className="max-w-sm"
         />
 
-        {/* Bulk actions dropdown — always visible, disabled when no selection */}
+        {/* Bulk actions dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -176,11 +206,12 @@ export function InvoiceDataTable({ data }: Props) {
               </Button>
             }
           />
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleBulkArchive}>Archive</DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-48 whitespace-nowrap">
             <DropdownMenuItem onClick={handleBulkMarkPaid}>Mark as paid</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleBulkArchive}>Archive</DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => setConfirmDelete(true)}
+              onClick={() => setDeleteTarget(selectedIds)}
               className="text-destructive focus:text-destructive"
             >
               Delete
@@ -188,7 +219,6 @@ export function InvoiceDataTable({ data }: Props) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Show archived toggle */}
         <Button
           id="invoice-data-table--archive-toggle"
           variant="outline"
@@ -206,47 +236,22 @@ export function InvoiceDataTable({ data }: Props) {
               </Button>
             }
           />
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-48 whitespace-nowrap">
             {table
               .getAllColumns()
               .filter((column) => column.getCanHide())
               .map((column) => (
                 <DropdownMenuCheckboxItem
                   key={column.id}
-                  className="capitalize"
                   checked={column.getIsVisible()}
                   onCheckedChange={(value) => column.toggleVisibility(!!value)}
                 >
-                  {column.id.replace(/_/g, " ")}
+                  {COLUMN_LABELS[column.id] ?? column.id}
                 </DropdownMenuCheckboxItem>
               ))}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-
-      {/* Inline delete confirmation */}
-      {confirmDelete && (
-        <div
-          id="invoice-data-table--confirm-delete"
-          className="mb-4 flex items-center gap-3 rounded-md border border-destructive bg-card px-4 py-3"
-        >
-          <p className="flex-1 text-sm">
-            Delete {selectedIds.length} invoice{selectedIds.length !== 1 ? "s" : ""}? This
-            cannot be undone.
-          </p>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleBulkDelete}
-            disabled={pending}
-          >
-            Confirm
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setConfirmDelete(false)}>
-            Cancel
-          </Button>
-        </div>
-      )}
 
       {/* Table */}
       <div className="overflow-hidden rounded-md border">
@@ -290,7 +295,7 @@ export function InvoiceDataTable({ data }: Props) {
       <div className="flex items-center justify-between py-4">
         <div className="text-sm text-muted-foreground">
           {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} row(s) selected.
+          {table.getFilteredRowModel().rows.length} invoices selected.
         </div>
         <div className="space-x-2">
           <Button
@@ -311,6 +316,28 @@ export function InvoiceDataTable({ data }: Props) {
           </Button>
         </div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {deleteTarget?.length ?? 0} invoice{(deleteTarget?.length ?? 0) !== 1 ? "s" : ""}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={pending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -235,6 +235,19 @@
 
 ---
 
+### ⏳ v1.3.3 — Invoice Duplication
+
+**Branch:** `v1.3.3/invoice-duplication`
+
+- [ ] `Duplicate` action on the `/invoices` per-row dropdown (placeholder 🚩 shipped in v1.3.2)
+- [ ] Server action `duplicateInvoice(id)` — creates a new draft invoice by copying all fields from the source except: `id`, `status` (→ draft), `access_code` (cleared), `btc_txid` (cleared), `created_at` / `updated_at`
+- [ ] `invoice_number` behavior: append " (copy)" if source has a number; leave null otherwise
+- [ ] After duplication, redirect the user to `/invoices/[new-id]/edit`
+
+**Done when:** User can duplicate any invoice into a new draft with a single click.
+
+---
+
 ### ⏳ v1.4 — PDF Generation + Email Notifications
 
 **Branch:** `v1.4/pdf-and-email`
