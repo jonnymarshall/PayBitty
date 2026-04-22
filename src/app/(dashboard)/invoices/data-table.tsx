@@ -41,7 +41,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { bulkArchive, bulkDelete, bulkMarkPaid } from "./bulk-actions";
-import { publishInvoice } from "./actions";
+import { publishInvoice, duplicateInvoice } from "./actions";
 import { buildColumns, InvoiceRow } from "./columns";
 import { useInvoiceRealtime } from "./use-invoice-realtime";
 
@@ -99,8 +99,7 @@ export function InvoiceDataTable({ data, userId }: Props) {
         onArchive: (id) => runRowAction(() => bulkArchive([id])),
         onDelete: (id) => setDeleteTarget([id]),
         onCopyPublicLink: copyPublicLink,
-        // Placeholder — real implementation tracked in v1.3.3 on the roadmap
-        onDuplicate: () => {},
+        onDuplicate: (id) => runRowAction(() => duplicateInvoice(id)),
       }),
     [runRowAction, copyPublicLink]
   );

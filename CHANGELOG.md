@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-04-22
+
+### Added
+- `Duplicate` action on the `/invoices` per-row dropdown — clones any invoice (draft, pending, paid, archived, etc.) into a fresh draft and navigates the user straight to the new invoice's edit page. Replaces the `Duplicate 🚩` placeholder shipped in v1.3.2.
+- `duplicateInvoice(id)` server action copies all source fields into a new row with `status=draft`, clears `btc_address` and `btc_txid` (BTC addresses can't be reused across active invoices), preserves `access_code`, and appends ` (copy)` to `invoice_number` when the source has one (otherwise leaves it null). Access is scoped to the owning user.
+
+### Changed
+- Dropdown label `Duplicate 🚩` → `Duplicate` (placeholder flag removed).
+
 ## [1.3.3] - 2026-04-22
 
 ### Added

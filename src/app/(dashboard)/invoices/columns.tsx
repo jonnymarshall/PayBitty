@@ -190,7 +190,7 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => actions.onDuplicate(invoice.id)}>
-                Duplicate 🚩
+                Duplicate
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => actions.onDelete(invoice.id)}

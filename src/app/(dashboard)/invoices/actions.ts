@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { computeInvoiceTotals, isValidBtcAddress, LineItem } from "@/lib/invoices";
 
@@ -217,6 +218,54 @@ export async function markUnpaid(invoiceId: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/dashboard");
   revalidatePath(`/invoices/${invoiceId}`);
+}
+
+export async function duplicateInvoice(invoiceId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: source } = await supabase
+    .from("invoices")
+    .select("*")
+    .eq("id", invoiceId)
+    .single();
+
+  if (!source || source.user_id !== user!.id) throw new Error("Invoice not found");
+
+  const { data: created, error } = await supabase
+    .from("invoices")
+    .insert({
+      user_id: source.user_id,
+      invoice_number: source.invoice_number ? `${source.invoice_number} (copy)` : null,
+      your_name: source.your_name,
+      your_email: source.your_email ?? "",
+      your_company: source.your_company,
+      your_address: source.your_address,
+      your_tax_id: source.your_tax_id,
+      client_name: source.client_name ?? "",
+      client_email: source.client_email ?? "",
+      client_company: source.client_company,
+      client_address: source.client_address,
+      client_tax_id: source.client_tax_id,
+      line_items: source.line_items,
+      tax_percent: source.tax_percent,
+      tax_fiat: source.tax_fiat,
+      subtotal_fiat: source.subtotal_fiat,
+      total_fiat: source.total_fiat,
+      currency: source.currency,
+      accepts_bitcoin: source.accepts_bitcoin,
+      btc_address: null,
+      due_date: source.due_date,
+      status: "draft",
+      access_code: source.access_code,
+      btc_txid: null,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  revalidatePath("/invoices");
+  redirect(`/invoices/${created.id}/edit`);
 }
 
 export async function markOverdue(invoiceId: string) {

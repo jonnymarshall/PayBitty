@@ -10,13 +10,14 @@ vi.mock("./bulk-actions", () => ({
 }));
 vi.mock("./actions", () => ({
   publishInvoice: vi.fn().mockResolvedValue(undefined),
+  duplicateInvoice: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./use-invoice-realtime", () => ({
   useInvoiceRealtime: vi.fn(),
 }));
 
 import { bulkArchive, bulkDelete, bulkMarkPaid } from "./bulk-actions";
-import { publishInvoice } from "./actions";
+import { publishInvoice, duplicateInvoice } from "./actions";
 
 const MOCK_INVOICES = [
   { id: "inv-1", invoice_number: "INV-001", client_name: "Acme", total_fiat: 1000, currency: "USD", status: "draft", due_date: null, created_at: "2026-04-15T12:00:00Z" },
@@ -136,11 +137,13 @@ describe("InvoiceDataTable — per-row actions", () => {
     expect(screen.getByRole("menuitem", { name: /copy public link/i })).toBeInTheDocument();
   });
 
-  it("shows 'Duplicate 🚩' on every row", async () => {
+  it("shows 'Duplicate' on every row (no placeholder flag)", async () => {
     render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
     fireEvent.click(openMenuButtons[0]);
-    expect(await screen.findByRole("menuitem", { name: /duplicate/i })).toBeInTheDocument();
+    const item = await screen.findByRole("menuitem", { name: /duplicate/i });
+    expect(item).toBeInTheDocument();
+    expect(item.textContent).not.toMatch(/🚩/);
   });
 
   it("calls publishInvoice when 'Mark as sent' is clicked on a draft", async () => {
@@ -149,5 +152,13 @@ describe("InvoiceDataTable — per-row actions", () => {
     fireEvent.click(openMenuButtons[0]); // inv-1 draft
     fireEvent.click(await screen.findByRole("menuitem", { name: /mark as sent/i }));
     await waitFor(() => expect(publishInvoice).toHaveBeenCalledWith("inv-1"));
+  });
+
+  it("calls duplicateInvoice when 'Duplicate' is clicked", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[1]); // inv-2 pending
+    fireEvent.click(await screen.findByRole("menuitem", { name: /duplicate/i }));
+    await waitFor(() => expect(duplicateInvoice).toHaveBeenCalledWith("inv-2"));
   });
 });
