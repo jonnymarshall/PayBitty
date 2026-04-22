@@ -37,24 +37,20 @@ const BASE_INVOICE: Invoice = {
 };
 
 describe("InvoicePaymentView — dates", () => {
-  it("shows a 'Date Sent' label", () => {
+  it("shows 'Date Sent:' label with formatted date", () => {
     render(<InvoicePaymentView invoice={BASE_INVOICE} btcPrice={null} />);
-    expect(screen.getByText(/date sent/i)).toBeInTheDocument();
-  });
-
-  it("shows the created_at date formatted", () => {
-    render(<InvoicePaymentView invoice={BASE_INVOICE} btcPrice={null} />);
+    expect(screen.getByText(/date sent:/i)).toBeInTheDocument();
     expect(screen.getByText(/apr(il)? 15,? 2026/i)).toBeInTheDocument();
   });
 
-  it("still shows due date when present", () => {
+  it("shows 'Date Due:' label with formatted date when due_date is present", () => {
     render(<InvoicePaymentView invoice={BASE_INVOICE} btcPrice={null} />);
+    expect(screen.getByText(/date due:/i)).toBeInTheDocument();
     expect(screen.getByText(/may 15,? 2026/i)).toBeInTheDocument();
   });
 
-  it("does not show 'Date Sent' label when created_at is absent from display", () => {
-    const noDate = { ...BASE_INVOICE, due_date: null };
-    render(<InvoicePaymentView invoice={noDate} btcPrice={null} />);
-    expect(screen.getByText(/date sent/i)).toBeInTheDocument();
+  it("shows 'No due date' when due_date is null", () => {
+    render(<InvoicePaymentView invoice={{ ...BASE_INVOICE, due_date: null }} btcPrice={null} />);
+    expect(screen.getByText(/no due date/i)).toBeInTheDocument();
   });
 });
