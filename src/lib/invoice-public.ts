@@ -24,7 +24,7 @@ export interface Invoice {
   accepts_bitcoin: boolean;
   btc_address: string | null;
   btc_txid: string | null;
-  status: "draft" | "pending" | "payment_detected" | "paid" | "overdue";
+  status: "draft" | "pending" | "payment_detected" | "paid" | "overdue" | "archived";
   access_code: string | null;
   due_date: string | null;
   created_at: string;

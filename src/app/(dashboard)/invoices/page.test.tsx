@@ -2,6 +2,15 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import InvoicesPage from "./page";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+vi.mock("./bulk-actions", () => ({
+  bulkArchive: vi.fn(),
+  bulkDelete: vi.fn(),
+  bulkMarkPaid: vi.fn(),
+}));
+
 const MOCK_INVOICES = [
   {
     id: "1",
@@ -41,9 +50,26 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 describe("InvoicesPage", () => {
-  it("shows due date with 'Due' prefix when due_date is present", async () => {
+  it("renders the invoices heading", async () => {
     render(await InvoicesPage());
-    expect(screen.getByText(/^Due /)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /invoices/i })).toBeInTheDocument();
+  });
+
+  it("shows a New Invoice link", async () => {
+    render(await InvoicesPage());
+    expect(screen.getByRole("link", { name: /new invoice/i })).toBeInTheDocument();
+  });
+
+  it("renders invoice numbers and client names", async () => {
+    render(await InvoicesPage());
+    expect(screen.getByText("INV-001")).toBeInTheDocument();
+    expect(screen.getByText("Acme Corp")).toBeInTheDocument();
+    expect(screen.getByText("INV-002")).toBeInTheDocument();
+  });
+
+  it("shows formatted due date in the Due Date column", async () => {
+    render(await InvoicesPage());
+    expect(screen.getByText(/apr(il)? 30,? 2026/i)).toBeInTheDocument();
   });
 
   it("shows a dash when invoice has no due_date", async () => {
@@ -52,10 +78,17 @@ describe("InvoicesPage", () => {
     expect(dashes.length).toBeGreaterThan(0);
   });
 
-  it("does not show raw creation date as the date column", async () => {
+  it("shows empty state when there are no invoices", async () => {
+    const { createClient } = await import("@/lib/supabase/server");
+    vi.mocked(createClient).mockResolvedValueOnce({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [] }),
+      })),
+    } as unknown as Awaited<ReturnType<typeof createClient>>);
     render(await InvoicesPage());
-    // created_at "2026-04-01" should not appear as the displayed date
-    expect(screen.queryByText("4/1/2026")).not.toBeInTheDocument();
-    expect(screen.queryByText("04/01/2026")).not.toBeInTheDocument();
+    expect(screen.getByText(/no invoices yet/i)).toBeInTheDocument();
   });
 });

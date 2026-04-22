@@ -221,17 +221,30 @@
 
 ---
 
-### ⏳ v1.3.2 — Invoice List Management
+### ✅ v1.3.2 — Invoice List Management
 
 **Branch:** `v1.3.2/invoice-list-management`
 
-- [ ] Multi-select checkboxes on the `/invoices` list
-- [ ] Bulk action dropdown appears when one or more invoices are selected: Delete, Archive, Mark as Paid
-- [ ] Archive status: add `archived` to invoice status enum; archived invoices hidden from main list by default (consider a toggle to show them)
-- [ ] Bulk delete: confirm before executing; only draft invoices deletable in bulk (or confirm for non-draft)
-- [ ] Bulk mark as paid: applies to selected non-paid invoices
+- [x] Multi-select checkboxes on the `/invoices` list
+- [x] Bulk action dropdown appears when one or more invoices are selected: Delete, Archive, Mark as Paid
+- [x] Archive status: add `archived` to invoice status enum; archived invoices hidden from main list by default (consider a toggle to show them)
+- [x] Bulk delete: confirm before executing; only draft invoices deletable in bulk (or confirm for non-draft)
+- [x] Bulk mark as paid: applies to selected non-paid invoices
 
 **Done when:** User can select multiple invoices and apply bulk actions from a single dropdown.
+
+---
+
+### ⏳ v1.3.3 — Invoice Duplication
+
+**Branch:** `v1.3.3/invoice-duplication`
+
+- [ ] `Duplicate` action on the `/invoices` per-row dropdown (placeholder 🚩 shipped in v1.3.2)
+- [ ] Server action `duplicateInvoice(id)` — creates a new draft invoice by copying all fields from the source except: `id`, `status` (→ draft), `access_code` (cleared), `btc_txid` (cleared), `created_at` / `updated_at`
+- [ ] `invoice_number` behavior: append " (copy)" if source has a number; leave null otherwise
+- [ ] After duplication, redirect the user to `/invoices/[new-id]/edit`
+
+**Done when:** User can duplicate any invoice into a new draft with a single click.
 
 ---
 
