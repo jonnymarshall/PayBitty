@@ -283,18 +283,18 @@ Small follow-up polish on the owner's dashboard views — the list and the singl
 
 ---
 
-### ⏳ v1.3.6 — Form & Client View Polish
+### ✅ v1.3.6 — Form & Client View Polish
 
 **Branch:** `v1.3.6/form-and-client-view-polish`
 
 Two small, independent input/display-quality fixes bundled because they each touch a single field or component.
 
 **`/invoices/new` form**
-- [ ] Suppress password-manager browser-extension icons (LastPass, 1Password, etc.) on the following fields, which currently trigger them: Invoice number, Name (sender + client), Email (sender + client), Company (sender + client). Keep them on the Address fields (where autofill is actually useful). Tax ID is already clean and should stay that way. Apply the same suppression pattern that was used on the `/invoices` filter input in v1.3.2 (the `fix: suppress password-manager icons on invoice filter input` commit).
+- 🚫 ~~Suppress password-manager browser-extension icons on Invoice number / Name / Email / Company fields.~~ _Won't fix: LastPass ignores the standard opt-out signals (`data-lpignore`, `autoComplete="off"`, `data-form-type="other"`) whenever a field's label or id matches one of its autofill categories (name/email/company/number). Attributes alone were shipped and verified in the DOM but LastPass injected the icon anyway. The only reliable workarounds (`type="search"` on identity fields, or swapping `type="email"` for `type="text"`) break HTML semantics and native validation — not worth the tradeoff for one extension's heuristic._
 
 **`/invoice/[id]` public payment view**
-- [ ] Make the BTC amount copyable — click/tap to copy, with the same "copied" feedback used on the `/invoices/[id]` share-link copy button (`src/components/copy-button.tsx`)
-- [ ] Make the BTC address copyable with the same pattern
+- [x] Make the BTC amount copyable — click/tap to copy, with the same "copied" feedback used on the `/invoices/[id]` share-link copy button (`src/components/copy-button.tsx`)
+- [x] Make the BTC address copyable with the same pattern
 
 **Done when:** Password-manager icons no longer clutter the New Invoice form on fields where autofill is nonsense, and the payer can copy the BTC amount and address with a single click from the public view.
 

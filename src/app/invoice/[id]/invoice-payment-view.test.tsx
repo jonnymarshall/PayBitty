@@ -94,3 +94,39 @@ describe("InvoicePaymentView — BTC reveal", () => {
     expect(screen.queryByRole("button", { name: /pay now in bitcoin/i })).not.toBeInTheDocument();
   });
 });
+
+describe("InvoicePaymentView — copy buttons", () => {
+  const BTC_INVOICE: Invoice = {
+    ...BASE_INVOICE,
+    accepts_bitcoin: true,
+    btc_address: "tb1qtarget",
+    status: "paid",
+  };
+
+  function mockClipboard() {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    return writeText;
+  }
+
+  it("copies the BTC amount when its copy button is clicked", async () => {
+    const writeText = mockClipboard();
+    // 500 USD / 50000 USD-per-BTC = 0.01 BTC
+    render(<InvoicePaymentView invoice={BTC_INVOICE} btcPrice={50000} />);
+
+    const btn = screen.getByRole("button", { name: /copy btc amount/i });
+    fireEvent.click(btn);
+
+    expect(writeText).toHaveBeenCalledWith("0.01");
+  });
+
+  it("copies the BTC address when its copy button is clicked", async () => {
+    const writeText = mockClipboard();
+    render(<InvoicePaymentView invoice={BTC_INVOICE} btcPrice={50000} />);
+
+    const btn = screen.getByRole("button", { name: /copy btc address/i });
+    fireEvent.click(btn);
+
+    expect(writeText).toHaveBeenCalledWith("tb1qtarget");
+  });
+});

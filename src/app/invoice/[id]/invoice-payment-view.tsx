@@ -9,6 +9,7 @@ import { InvoiceDates } from "@/components/invoice-dates";
 import { PaymentWatcher } from "./payment-watcher";
 import { MarkSentButton } from "./mark-sent-button";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/copy-button";
 import { getMempoolBaseUrl } from "@/lib/btc-network";
 
 function isPayableStatus(s: Invoice["status"]): boolean {
@@ -34,6 +35,9 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
   const cur = invoice.currency;
   const showBtc = invoice.accepts_bitcoin && !!invoice.btc_address && !!btcPrice;
   const btcAmount = showBtc ? fiatToBtc(invoice.total_fiat, btcPrice!) : null;
+  const btcAmountDisplay = btcAmount !== null
+    ? btcAmount.toFixed(8).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")
+    : null;
   const bip21Uri = showBtc
     ? buildBip21Uri(
         invoice.btc_address!,
@@ -149,16 +153,22 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
                 <div className="space-y-3">
                   <div className="space-y-0.5">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">BTC amount</p>
-                    <p id="invoice-view--btc-amount" className="text-lg font-semibold tabular-nums">
-                      {btcAmount!.toFixed(8).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")} BTC
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <p id="invoice-view--btc-amount" className="text-lg font-semibold tabular-nums">
+                        {btcAmountDisplay} BTC
+                      </p>
+                      <CopyButton text={btcAmountDisplay!} label="Copy BTC amount" />
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       at {fmtCurrency(btcPrice!, "USD")}/BTC
                     </p>
                   </div>
                   <div className="space-y-0.5">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Address</p>
-                    <p id="invoice-view--btc-address" className="text-xs font-mono break-all">{invoice.btc_address}</p>
+                    <div className="flex items-start gap-3">
+                      <p id="invoice-view--btc-address" className="text-xs font-mono break-all">{invoice.btc_address}</p>
+                      <CopyButton text={invoice.btc_address!} label="Copy BTC address" />
+                    </div>
                   </div>
                   {invoice.btc_txid && (
                     <div className="space-y-0.5">
