@@ -448,4 +448,5 @@ Project is not yet linked to Vercel. Before first deployment, run `vercel link` 
 - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` (if used server-side)
 - [ ] `RESEND_API_KEY` (added v1.4)
+- [ ] **Verify a sending domain in the Resend dashboard** and set `EMAIL_FROM` to an address on that domain. Without a verified domain, Resend only delivers to the email address on the Resend account itself — sends to any other recipient (clients, test addresses) return a 422 and the email never arrives. This is a Resend free-tier safety rail, not a Paybitty bug.
 - [ ] Any other secrets present in `.env` at deploy time

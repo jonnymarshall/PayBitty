@@ -35,7 +35,7 @@ export interface SendInvoicePublishedArgs {
 export async function sendInvoicePublishedEmail(args: SendInvoicePublishedArgs): Promise<void> {
   await safeSend("invoice published", async () => {
     const resend = getResend()!;
-    await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: getFromAddress(),
       to: args.to,
       subject: args.invoiceNumber
@@ -51,6 +51,7 @@ export async function sendInvoicePublishedEmail(args: SendInvoicePublishedArgs):
         dueDateDisplay: args.dueDateDisplay,
       }),
     });
+    if (error) throw new Error(`Resend ${error.name}: ${error.message}`);
   });
 }
 
@@ -72,7 +73,7 @@ function mempoolLink(txid: string): string {
 export async function sendPaymentDetectedEmail(args: SendPaymentStatusArgs): Promise<void> {
   await safeSend("payment detected", async () => {
     const resend = getResend()!;
-    await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: getFromAddress(),
       to: args.to,
       subject: args.invoiceNumber
@@ -87,13 +88,14 @@ export async function sendPaymentDetectedEmail(args: SendPaymentStatusArgs): Pro
         dashboardUrl: `${getAppUrl()}/invoices/${args.invoiceId}`,
       }),
     });
+    if (error) throw new Error(`Resend ${error.name}: ${error.message}`);
   });
 }
 
 export async function sendPaymentConfirmedEmail(args: SendPaymentStatusArgs): Promise<void> {
   await safeSend("payment confirmed", async () => {
     const resend = getResend()!;
-    await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: getFromAddress(),
       to: args.to,
       subject: args.invoiceNumber
@@ -108,5 +110,6 @@ export async function sendPaymentConfirmedEmail(args: SendPaymentStatusArgs): Pr
         dashboardUrl: `${getAppUrl()}/invoices/${args.invoiceId}`,
       }),
     });
+    if (error) throw new Error(`Resend ${error.name}: ${error.message}`);
   });
 }
