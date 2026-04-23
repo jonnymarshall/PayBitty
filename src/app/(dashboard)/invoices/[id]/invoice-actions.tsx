@@ -66,6 +66,12 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
           </Link>
         )}
 
+        {!isDraft && (
+          <a href={`/api/invoices/${invoice.id}/pdf`} download>
+            <Button id="invoice-actions--download-pdf-button" variant="outline">Download PDF</Button>
+          </a>
+        )}
+
         {isDraft && (
           <Button
             id="invoice-actions--mark-sent-button"

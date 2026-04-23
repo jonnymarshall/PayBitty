@@ -3,9 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/email/send", () => ({
+  sendInvoicePublishedEmail: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { sendInvoicePublishedEmail } from "@/lib/email/send";
 import { saveDraft, publishInvoice, deleteDraft, markOverdue, duplicateInvoice } from "./actions";
 
 const VALID_DRAFT = {
@@ -103,6 +107,63 @@ describe("publishInvoice", () => {
       btcConflict: { id: "inv-other", status: "pending" },
     });
     await expect(publishInvoice("inv-1")).rejects.toThrow(/btc_address: This bitcoin address/i);
+  });
+
+  it("sends the invoice-published email to the client with the invoice details", async () => {
+    makeSupabase({
+      fetchData: {
+        id: "inv-7",
+        status: "draft",
+        user_id: "user-1",
+        accepts_bitcoin: false,
+        btc_address: null,
+        client_email: "client@example.com",
+        client_name: "Ada",
+        your_name: "Charles",
+        your_email: "charles@example.com",
+        your_company: null,
+        invoice_number: "INV-77",
+        total_fiat: 500,
+        currency: "USD",
+        access_code: "SECRET42",
+        due_date: "2026-07-10",
+      },
+    });
+    await publishInvoice("inv-7");
+    expect(sendInvoicePublishedEmail).toHaveBeenCalledTimes(1);
+    expect(sendInvoicePublishedEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: "client@example.com",
+      senderName: "Charles",
+      clientName: "Ada",
+      invoiceId: "inv-7",
+      invoiceNumber: "INV-77",
+      totalFiat: 500,
+      currency: "USD",
+      accessCode: "SECRET42",
+      dueDateDisplay: "July 10, 2026",
+    }));
+  });
+
+  it("does not send an email when client_email is empty", async () => {
+    makeSupabase({
+      fetchData: {
+        id: "inv-8",
+        status: "draft",
+        user_id: "user-1",
+        accepts_bitcoin: false,
+        btc_address: null,
+        client_email: "",
+        client_name: "",
+        your_name: "Charles",
+        invoice_number: null,
+        total_fiat: 100,
+        currency: "USD",
+        access_code: null,
+        due_date: null,
+      },
+    });
+    await publishInvoice("inv-8");
+    expect(sendInvoicePublishedEmail).not.toHaveBeenCalled();
   });
 });
 

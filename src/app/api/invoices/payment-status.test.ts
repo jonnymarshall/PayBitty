@@ -14,9 +14,22 @@ const mockFrom = vi.fn(() => ({
   eq: mockEq,
   single: mockSingle,
 }));
+const mockGetUserById = vi.fn().mockResolvedValue({
+  data: { user: { id: "owner-1", email: "owner@example.com" } },
+});
 
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ from: mockFrom }),
+  createAdminClient: () => ({
+    from: mockFrom,
+    auth: { admin: { getUserById: (...args: unknown[]) => mockGetUserById(...args) } },
+  }),
+}));
+
+const mockSendDetected = vi.fn().mockResolvedValue(undefined);
+const mockSendConfirmed = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/email/send", () => ({
+  sendPaymentDetectedEmail: (...args: unknown[]) => mockSendDetected(...args),
+  sendPaymentConfirmedEmail: (...args: unknown[]) => mockSendConfirmed(...args),
 }));
 
 // Mock mempool fetchTx
@@ -43,6 +56,11 @@ const pendingInvoice = {
   id: "inv-1",
   btc_address: "tb1qtarget",
   status: "pending",
+  user_id: "owner-1",
+  invoice_number: "INV-PAY-1",
+  client_name: "Ada",
+  total_fiat: 250,
+  currency: "USD",
 };
 
 const matchingTx = {
@@ -116,5 +134,45 @@ describe("POST /api/invoices/[id]/payment-status", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("paid");
+  });
+
+  it("emails the owner on a successful payment_detected transition", async () => {
+    mockSingle
+      .mockResolvedValueOnce({ data: pendingInvoice, error: null })
+      .mockResolvedValueOnce({ data: { status: "payment_detected" }, error: null });
+    mockFetchTx.mockResolvedValueOnce(matchingTx);
+    mockUpdate.mockReturnValue({ eq: () => ({ eq: () => ({ select: () => ({ single: mockSingle }) }) }) });
+
+    await postRequest("inv-1", { txid: "txabc", status: "payment_detected" });
+
+    expect(mockSendDetected).toHaveBeenCalledTimes(1);
+    expect(mockSendConfirmed).not.toHaveBeenCalled();
+    expect(mockSendDetected).toHaveBeenCalledWith(expect.objectContaining({
+      to: "owner@example.com",
+      invoiceId: "inv-1",
+      invoiceNumber: "INV-PAY-1",
+      clientName: "Ada",
+      totalFiat: 250,
+      currency: "USD",
+      txid: "txabc",
+    }));
+  });
+
+  it("emails the owner on a successful paid transition", async () => {
+    mockSingle
+      .mockResolvedValueOnce({ data: pendingInvoice, error: null })
+      .mockResolvedValueOnce({ data: { status: "paid" }, error: null });
+    mockFetchTx.mockResolvedValueOnce(matchingTx);
+    mockUpdate.mockReturnValue({ eq: () => ({ eq: () => ({ select: () => ({ single: mockSingle }) }) }) });
+
+    await postRequest("inv-1", { txid: "txabc", status: "paid" });
+
+    expect(mockSendConfirmed).toHaveBeenCalledTimes(1);
+    expect(mockSendDetected).not.toHaveBeenCalled();
+    expect(mockSendConfirmed).toHaveBeenCalledWith(expect.objectContaining({
+      to: "owner@example.com",
+      invoiceId: "inv-1",
+      txid: "txabc",
+    }));
   });
 });

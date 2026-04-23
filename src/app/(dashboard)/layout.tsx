@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
+import { LoginSweepTrigger } from "@/components/login-sweep-trigger";
+import { Button } from "@/components/ui/button";
+import { signOutAction } from "./sign-out-action";
 
 export default async function DashboardLayout({
   children,
@@ -34,11 +37,17 @@ export default async function DashboardLayout({
     <div className="min-h-screen flex flex-col">
       <header id="nav--header" className="border-b border-border px-6 py-4 flex items-center justify-between">
         <Link href="/invoices" className="font-semibold tracking-tight text-primary">Paybitty</Link>
-        <span id="nav--user-email" className="text-sm text-muted-foreground">{user.email}</span>
+        <div id="nav--right" className="flex items-center gap-4">
+          <span id="nav--user-email" className="text-sm text-muted-foreground">{user.email}</span>
+          <form action={signOutAction}>
+            <Button id="nav--sign-out-button" type="submit" variant="outline" size="sm">Log out</Button>
+          </form>
+        </div>
       </header>
       <main id="dashboard--main" className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
         {children}
       </main>
+      <LoginSweepTrigger />
     </div>
   );
 }

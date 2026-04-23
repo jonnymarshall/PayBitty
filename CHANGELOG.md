@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-22
+
+### Added
+- **Login sweep** — on dashboard mount (once per tab session), check every `pending` / `payment_detected` invoice against mempool.space to catch status transitions that happened while the user was offline. Confirmed-on-chain → `paid`; unconfirmed but broadcast → `payment_detected`. Clears the deferred item from v1.3.
+- **Invoice PDF generation** — server-side rendering with `@react-pdf/renderer`. Exposes `renderInvoicePdf(invoice)` → `Buffer` with headers for parties, line items, totals, and the BTC payment block when `accepts_bitcoin` is true.
+- **PDF download** — `GET /api/invoices/[id]/pdf` returns the invoice as `application/pdf`, auth-gated to the owner (scoped on both `id` and `user_id` so an attacker can't enumerate). New `Download PDF` button on `/invoices/[id]` for non-draft invoices.
+- **Transactional emails** via Resend + React Email:
+  - On publish → invoice link + access code sent to `client_email`.
+  - On transition to `payment_detected` (0-conf) → notification to the invoice creator.
+  - On transition to `paid` (1+ conf) → confirmation to the invoice creator.
+  - Emails fire from both the client-side watcher path (`/api/invoices/[id]/payment-status`) and the login sweep, so the creator gets notified whether they were online or away.
+  - Configured via `RESEND_API_KEY`. Missing key → email sends are silently skipped (a warning is logged) so the app still works in dev without email.
+- `EMAIL_FROM` env var (optional, defaults to `Paybitty <onboarding@resend.dev>`), `NEXT_PUBLIC_SITE_URL` / `NEXT_PUBLIC_APP_URL` env var (optional, for building absolute links in emails).
+- **Log out button** in the dashboard nav header (right of the user email). Submits a server action that calls `supabase.auth.signOut()` and redirects to `/login`. Added during v1.4 testing to enable sign-in with a different account for Resend-account email matching.
+
+### Notes
+- Pre-deployment checklist added to `development/ROADMAP.md` — `RESEND_API_KEY` and other `.env` values need to be mirrored into Vercel project env vars before first deploy.
+- Email dispatch uses a `safeSend` wrapper that catches and logs errors without failing the parent action — a broken email provider will never block a publish or a payment transition.
+
 ## [1.3.6] - 2026-04-22
 
 ### Added

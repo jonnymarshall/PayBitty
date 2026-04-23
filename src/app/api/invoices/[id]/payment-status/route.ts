@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchTx, txPaysToAddress } from "@/lib/mempool";
+import { sendPaymentDetectedEmail, sendPaymentConfirmedEmail } from "@/lib/email/send";
 
 type PayableStatus = "payment_detected" | "paid";
 
@@ -33,7 +34,7 @@ export async function POST(
   const supabase = createAdminClient();
   const { data: invoice, error } = await supabase
     .from("invoices")
-    .select("id, btc_address, status")
+    .select("id, btc_address, status, user_id, invoice_number, client_name, total_fiat, currency")
     .eq("id", id)
     .single();
 
@@ -69,5 +70,25 @@ export async function POST(
 
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
+
+  const { data: userRecord } = await supabase.auth.admin.getUserById(invoice.user_id);
+  const ownerEmail = userRecord?.user?.email;
+  if (ownerEmail) {
+    const emailArgs = {
+      to: ownerEmail,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      clientName: invoice.client_name || "your client",
+      totalFiat: invoice.total_fiat,
+      currency: invoice.currency,
+      txid,
+    };
+    if (status === "payment_detected") {
+      await sendPaymentDetectedEmail(emailArgs);
+    } else {
+      await sendPaymentConfirmedEmail(emailArgs);
+    }
+  }
+
   return NextResponse.json({ status: updated.status });
 }
