@@ -311,8 +311,160 @@ Two small, independent input/display-quality fixes bundled because they each tou
 - [x] Email: payment confirmed notification to creator (1+ conf)
 - [x] PDF generation with `@react-pdf/renderer` (server-side)
 - [x] PDF download available from invoice detail view
+- [x] Log out button in the dashboard nav (right of the user email) — needed for testing sign-in with a different account during email deliverability checks
 
 **Done when:** All transactional emails send correctly and PDFs are downloadable.
+
+---
+
+### ⏳ v1.4.1 — Background Payment Polling (replaces login sweep)
+
+**Branch:** `v1.4.1/background-payment-polling`
+
+**Context for a fresh session:** v1.4 shipped two payment-detection paths: (a) a client-side mempool WebSocket watcher on `/invoice/[id]` that catches transitions in real time while the payer is on the page, and (b) a login-time "sweep" (`src/components/login-sweep-trigger.tsx` + `src/app/(dashboard)/sweep-action.ts`) that catches missed transitions when the owner next opens the dashboard. Both leave a gap: if the payer closes the page *and* the owner doesn't log in, nothing runs. This version replaces the login sweep with a **Vercel Cron** that polls mempool.space on a per-invoice schedule, so detection is fully background — no user presence required on either side.
+
+**Polling schedule (user-confirmed):**
+
+- **Pre-mempool (status = `pending`, nothing broadcast yet):** 1m, 5m, 10m, 30m after publish. If still not seen after ~46 min, background polling stops for that invoice. Client-side watcher still works if the payer returns to the page.
+- **Post-mempool (status = `payment_detected`, tx seen but unconfirmed):** 10m × 3, then 1h × 6, then 4h × 12, then 8h × 24. After ~11 days unconfirmed, stop.
+
+**Login sweep is removed entirely** — the background cron becomes the single source of truth.
+
+---
+
+#### Schema — new migration `supabase/migrations/0008_background_payment_schedule.sql`
+
+Add three columns to `invoices`:
+
+- `next_check_at TIMESTAMPTZ` (nullable) — when the cron should next process this row. `NULL` = no polling (draft, paid, archived, or exhausted).
+- `mempool_seen_at TIMESTAMPTZ` (nullable) — when the tx was first seen in mempool. Drives the post-mempool cadence.
+- `stage_attempt INT NOT NULL DEFAULT 0` — counter within the current stage. Interval = fn(mempool_seen_at IS NULL, stage_attempt).
+
+Partial index on `next_check_at WHERE next_check_at IS NOT NULL` for fast cron lookups.
+
+Backfill: existing `pending`/`payment_detected` rows get `next_check_at = now() + interval '1 minute'` so they pick up on first cron run.
+
+#### New pure scheduling function — `src/lib/invoices/payment-schedule.ts`
+
+```ts
+interface ScheduleInput {
+  status: "pending" | "payment_detected";
+  btc_address: string;
+  mempool_seen_at: string | null;
+  stage_attempt: number;
+}
+
+interface ScheduleDecision {
+  newStatus: "pending" | "payment_detected" | "paid";
+  newMempoolSeenAt: string | null;
+  newStageAttempt: number;
+  newNextCheckAt: string | null; // null = stop polling
+  detectedTxid: string | null;   // non-null if status changed this tick
+}
+
+function decidePaymentSchedule(
+  input: ScheduleInput,
+  txs: MempoolTx[],
+  now: Date
+): ScheduleDecision
+```
+
+Pure function, no I/O. Replaces the core decision logic currently inside `sweepUserInvoices`. Fully unit-tested.
+
+Delay table (hardcoded, easy to tweak):
+
+```ts
+const PRE_MEMPOOL_DELAYS_MS = [60_000, 300_000, 600_000, 1_800_000]; // 1m, 5m, 10m, 30m
+const POST_MEMPOOL_STAGES = [
+  { count: 3,  intervalMs: 10 * 60_000 },
+  { count: 6,  intervalMs: 60 * 60_000 },
+  { count: 12, intervalMs: 4 * 60 * 60_000 },
+  { count: 24, intervalMs: 8 * 60 * 60_000 },
+];
+```
+
+#### New cron endpoint — `src/app/api/cron/payment-sweep/route.ts`
+
+Behavior:
+1. Require `Authorization: Bearer $CRON_SECRET` — 401 otherwise. Vercel Cron attaches this header automatically.
+2. Fetch up to 50 invoices where `next_check_at <= now()` AND `status IN ('pending','payment_detected')`.
+3. For each: `fetchAddressTxs(btc_address)` (existing helper in `src/lib/mempool.ts`), pass to `decidePaymentSchedule`, apply update with optimistic concurrency (`.eq("status", current.status)`).
+4. If status transitioned: dispatch via existing `sendPaymentDetectedEmail` / `sendPaymentConfirmedEmail` (resolve owner email via `supabase.auth.admin.getUserById`, same pattern as `src/app/api/invoices/[id]/payment-status/route.ts`).
+5. Return JSON `{ processed, transitions, errors }` for Vercel Cron logs.
+
+Batch cap (50) protects against mempool.space rate limits (~10/s).
+
+#### Vercel cron config — new `vercel.json` at repo root
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/payment-sweep", "schedule": "* * * * *" }
+  ]
+}
+```
+
+Every minute. Vercel's current policy (2025) supports per-minute cron on Hobby with up to 2 crons.
+
+#### Payment-status route — consolidate shared logic
+
+`src/app/api/invoices/[id]/payment-status/route.ts` currently has near-duplicate transition logic. After the route's existing txid validation, replace its ad-hoc status-update block with a call into a thin wrapper around `decidePaymentSchedule` (or a helper that accepts a known txid rather than raw mempool txs). The route still exists — it's the fast path when the client-side watcher fires — but it now shares one schedule / one state-update shape with the cron.
+
+#### Files to DELETE (login sweep removal)
+
+- `src/components/login-sweep-trigger.tsx`
+- `src/app/(dashboard)/sweep-action.ts`
+- `src/lib/invoices/sweep.ts` + `sweep.test.ts` (logic moves to `payment-schedule.ts`)
+
+#### Files to EDIT
+
+- `src/app/(dashboard)/layout.tsx` — remove `<LoginSweepTrigger />` and its import.
+- `src/app/(dashboard)/invoices/actions.ts` — in `publishInvoice`, after setting status to `pending`, also set `next_check_at = now() + 1 minute`, `stage_attempt = 0`, `mempool_seen_at = null`.
+- `src/app/api/invoices/[id]/payment-status/route.ts` — consolidate per above.
+- `development/ROADMAP.md` — flip this section ⏳ → ✅ when done; add `CRON_SECRET` to the pre-deployment checklist.
+- `CHANGELOG.md` — add v1.4.1 entry.
+
+#### Tests
+
+New:
+- `src/lib/invoices/payment-schedule.test.ts` — high coverage; this is the core logic:
+  - Pre-mempool attempt 0 → next interval 5m.
+  - Pre-mempool attempt 3 (final) with no tx → `next_check_at = null` (stop).
+  - Pre-mempool attempt with unconfirmed tx → transition to `payment_detected`, `mempool_seen_at` set, `stage_attempt = 0`, `next_check_at = +10m`.
+  - Pre-mempool attempt with confirmed tx → transition to `paid`, `next_check_at = null`.
+  - Post-mempool attempt 2 (end of 10m stage) → next interval 1h.
+  - Post-mempool attempt 8 (end of 1h stage) → next interval 4h.
+  - Post-mempool attempt 44 (final) with still-unconfirmed tx → `next_check_at = null` (stop).
+  - Post-mempool attempt with confirmed tx → transition to `paid`, `next_check_at = null`.
+- `src/app/api/cron/payment-sweep.test.ts` (route-level):
+  - 401 when bearer missing / wrong.
+  - Correct scope: `.eq("status", "pending"/"payment_detected")`, `.lte("next_check_at", now())`, `.limit(50)`.
+  - Emails dispatched exactly once per transition (mock `@/lib/email/send` same way `payment-status.test.ts` does).
+
+Update:
+- `src/app/(dashboard)/invoices/actions.test.ts` — `publishInvoice` tests should assert `next_check_at`, `stage_attempt`, `mempool_seen_at` are written.
+
+Delete:
+- `src/lib/invoices/sweep.test.ts` (the sweep it tests is being removed).
+
+All remaining tests should continue to pass. Typecheck + lint clean.
+
+#### Manual-test affordance for dev
+
+In dev, Vercel Cron doesn't fire. Curl the endpoint with the secret:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/payment-sweep
+```
+
+Document this at the top of the route file.
+
+#### Pre-deployment additions
+
+Add to the "Pre-deployment Checklist" section at the bottom of this roadmap:
+- `CRON_SECRET` — required by the cron endpoint. Vercel generates this when you configure the cron; mirror it into `.env.local` for dev curl.
+
+**Done when:** A testnet invoice, published and then immediately abandoned (payer closes the tab), still transitions to `payment_detected` and then `paid` on the correct mempool events — with the creator receiving both emails — without anyone logging in.
 
 ---
 

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Emails fire from both the client-side watcher path (`/api/invoices/[id]/payment-status`) and the login sweep, so the creator gets notified whether they were online or away.
   - Configured via `RESEND_API_KEY`. Missing key → email sends are silently skipped (a warning is logged) so the app still works in dev without email.
 - `EMAIL_FROM` env var (optional, defaults to `Paybitty <onboarding@resend.dev>`), `NEXT_PUBLIC_SITE_URL` / `NEXT_PUBLIC_APP_URL` env var (optional, for building absolute links in emails).
+- **Log out button** in the dashboard nav header (right of the user email). Submits a server action that calls `supabase.auth.signOut()` and redirects to `/login`. Added during v1.4 testing to enable sign-in with a different account for Resend-account email matching.
 
 ### Notes
 - Pre-deployment checklist added to `development/ROADMAP.md` — `RESEND_API_KEY` and other `.env` values need to be mirrored into Vercel project env vars before first deploy.
