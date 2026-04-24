@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
-import { LoginSweepTrigger } from "@/components/login-sweep-trigger";
 import { Button } from "@/components/ui/button";
 import { signOutAction } from "./sign-out-action";
 
@@ -47,7 +46,6 @@ export default async function DashboardLayout({
       <main id="dashboard--main" className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
         {children}
       </main>
-      <LoginSweepTrigger />
     </div>
   );
 }

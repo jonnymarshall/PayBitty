@@ -15,6 +15,7 @@ async function safeSend(label: string, send: () => Promise<unknown>): Promise<vo
   }
   try {
     await send();
+    console.log(`[email] ${label} sent`);
   } catch (err) {
     console.error(`[email] ${label} failed`, err);
   }
