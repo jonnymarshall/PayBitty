@@ -1,10 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchTx, txPaysToAddress } from "@/lib/mempool";
+import { fetchTx, txPaysToAddress, type MempoolTx } from "@/lib/mempool";
+import { decidePaymentSchedule } from "@/lib/invoices/payment-schedule";
 import { sendPaymentDetectedEmail, sendPaymentConfirmedEmail } from "@/lib/email/send";
-
-type PayableStatus = "payment_detected" | "paid";
 
 const STATUS_ORDER: Record<string, number> = {
   pending: 0,
@@ -34,13 +33,14 @@ export async function POST(
   const supabase = createAdminClient();
   const { data: invoice, error } = await supabase
     .from("invoices")
-    .select("id, btc_address, status, user_id, invoice_number, client_name, total_fiat, currency")
+    .select(
+      "id, btc_address, status, user_id, invoice_number, client_name, total_fiat, currency, mempool_seen_at, stage_attempt"
+    )
     .eq("id", id)
     .single();
 
   if (error || !invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
 
-  // Already at or past this status — tell the client what the current status is
   const currentOrder = STATUS_ORDER[invoice.status] ?? -1;
   const newOrder = STATUS_ORDER[status];
   if (newOrder <= currentOrder) {
@@ -52,9 +52,34 @@ export async function POST(
     return NextResponse.json({ error: "Transaction does not pay to invoice address" }, { status: 400 });
   }
 
+  // Synthesize a tx-list reflecting the client-reported transition (confirmed vs. unconfirmed)
+  // and delegate to the shared scheduler so next_check_at / stage_attempt / mempool_seen_at
+  // stay consistent with the background cron.
+  const syntheticTx: MempoolTx = {
+    txid,
+    status: { confirmed: status === "paid" },
+    vout: [{ scriptpubkey_address: invoice.btc_address, value: 0 }],
+  };
+  const decision = decidePaymentSchedule(
+    {
+      status: invoice.status as "pending" | "payment_detected",
+      btc_address: invoice.btc_address,
+      mempool_seen_at: invoice.mempool_seen_at,
+      stage_attempt: invoice.stage_attempt,
+    },
+    [syntheticTx],
+    new Date()
+  );
+
   const { data: updated, error: updateError } = await supabase
     .from("invoices")
-    .update({ status: status as PayableStatus, btc_txid: txid })
+    .update({
+      status: decision.newStatus,
+      btc_txid: decision.detectedTxid ?? txid,
+      mempool_seen_at: decision.newMempoolSeenAt,
+      stage_attempt: decision.newStageAttempt,
+      next_check_at: decision.newNextCheckAt,
+    })
     .eq("id", id)
     .eq("status", invoice.status)
     .select("status")
@@ -71,22 +96,24 @@ export async function POST(
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
 
-  const { data: userRecord } = await supabase.auth.admin.getUserById(invoice.user_id);
-  const ownerEmail = userRecord?.user?.email;
-  if (ownerEmail) {
-    const emailArgs = {
-      to: ownerEmail,
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.invoice_number,
-      clientName: invoice.client_name || "your client",
-      totalFiat: invoice.total_fiat,
-      currency: invoice.currency,
-      txid,
-    };
-    if (status === "payment_detected") {
-      await sendPaymentDetectedEmail(emailArgs);
-    } else {
-      await sendPaymentConfirmedEmail(emailArgs);
+  if (decision.newStatus !== invoice.status) {
+    const { data: userRecord } = await supabase.auth.admin.getUserById(invoice.user_id);
+    const ownerEmail = userRecord?.user?.email;
+    if (ownerEmail) {
+      const emailArgs = {
+        to: ownerEmail,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoice_number,
+        clientName: invoice.client_name || "your client",
+        totalFiat: invoice.total_fiat,
+        currency: invoice.currency,
+        txid,
+      };
+      if (decision.newStatus === "paid") {
+        await sendPaymentConfirmedEmail(emailArgs);
+      } else {
+        await sendPaymentDetectedEmail(emailArgs);
+      }
     }
   }
 

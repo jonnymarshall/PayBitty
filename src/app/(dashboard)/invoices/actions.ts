@@ -152,7 +152,12 @@ export async function publishInvoice(invoiceId: string) {
 
   const { error } = await supabase
     .from("invoices")
-    .update({ status: "pending" })
+    .update({
+      status: "pending",
+      next_check_at: new Date(Date.now() + 60_000).toISOString(),
+      stage_attempt: 0,
+      mempool_seen_at: null,
+    })
     .eq("id", invoiceId);
 
   if (error) throw new Error(error.message);

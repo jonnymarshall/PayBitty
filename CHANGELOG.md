@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-04-23
+
+### Added
+- **Background payment polling via Vercel Cron.** A new `/api/cron/payment-sweep` endpoint polls mempool.space on a tiered per-invoice schedule so payment detection works even when neither the payer nor the owner has a page open. Pre-mempool cadence: 1m, 5m, 10m, 30m after publish (stops after ~46min). Post-mempool cadence (tx seen, unconfirmed): 10m ×3, 1h ×6, 4h ×12, 8h ×24, then stop after ~11 days.
+- New pure scheduling function `decidePaymentSchedule(input, txs, now)` in `src/lib/invoices/payment-schedule.ts` — single source of truth for status transitions and next-check timing. Fully unit tested.
+- `vercel.json` cron configuration — runs `/api/cron/payment-sweep` every minute in production.
+- `CRON_SECRET` environment variable — bearer-token auth required on the cron endpoint; 401 otherwise.
+- Migration `0008_background_payment_schedule.sql` adds `next_check_at`, `mempool_seen_at`, `stage_attempt` columns to `invoices` with a partial index on `next_check_at` for fast cron lookups. Existing `pending` / `payment_detected` rows are backfilled with `next_check_at = now() + 1 minute` so they pick up on first run.
+
+### Changed
+- `publishInvoice` now initialises scheduling columns alongside the status transition (`next_check_at = now() + 1m`, `stage_attempt = 0`, `mempool_seen_at = null`) so freshly published invoices enter the polling rotation immediately.
+- `/api/invoices/[id]/payment-status` (the fast path triggered by the client-side mempool WebSocket watcher) now delegates to the same `decidePaymentSchedule` helper the cron uses — one shared state-update shape across both paths.
+
+### Removed
+- **Login sweep is gone.** `src/components/login-sweep-trigger.tsx`, `src/app/(dashboard)/sweep-action.ts`, and `src/lib/invoices/sweep.ts` deleted. Background cron is now the single source of truth for owner-offline / payer-offline transitions.
+
 ## [1.4.0] - 2026-04-22
 
 ### Added

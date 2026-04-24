@@ -76,7 +76,7 @@ function makeSupabase({
     })),
   } as unknown as AnySupabase);
 
-  return { insertSingle, insertChain, updateEq, deleteEq, maybeSingle };
+  return { insertSingle, insertChain, updateChain, updateEq, deleteEq, maybeSingle };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -142,6 +142,34 @@ describe("publishInvoice", () => {
       accessCode: "SECRET42",
       dueDateDisplay: "July 10, 2026",
     }));
+  });
+
+  it("initialises background-polling columns (next_check_at = +1m, stage_attempt = 0, mempool_seen_at = null) alongside the status change", async () => {
+    const { updateChain } = makeSupabase({
+      fetchData: {
+        id: "inv-sched",
+        status: "draft",
+        user_id: "user-1",
+        accepts_bitcoin: true,
+        btc_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+        client_email: "",
+        invoice_number: null,
+        total_fiat: 100,
+        currency: "USD",
+      },
+    });
+    const before = Date.now();
+    await publishInvoice("inv-sched");
+    const after = Date.now();
+
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+    expect(payload.stage_attempt).toBe(0);
+    expect(payload.mempool_seen_at).toBeNull();
+
+    const nextCheck = new Date(payload.next_check_at as string).getTime();
+    expect(nextCheck).toBeGreaterThanOrEqual(before + 60_000 - 5_000);
+    expect(nextCheck).toBeLessThanOrEqual(after + 60_000 + 5_000);
   });
 
   it("does not send an email when client_email is empty", async () => {
