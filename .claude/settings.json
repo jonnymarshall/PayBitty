@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // \"\"' | { read -r f; echo \"$f\" | grep -q 'supabase/migrations' && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"New Supabase migration file written: %s — run the supabase-migrate skill now to apply it with npx supabase db push.\"}}' \"$f\" || true; }",
+            "statusMessage": "Checking for new migrations..."
+          }
+        ]
+      }
+    ]
+  }
+}
