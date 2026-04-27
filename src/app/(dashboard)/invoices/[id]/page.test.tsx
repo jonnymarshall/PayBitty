@@ -32,25 +32,29 @@ const BASE_INVOICE = {
   updated_at: "2026-04-15T12:00:00Z",
 };
 
-vi.mock("@/lib/supabase/server", () => ({
-  createClient: vi.fn().mockResolvedValue({
+function makeSupabaseMock(invoiceData: Omit<typeof BASE_INVOICE, "due_date"> & { due_date: string | null }) {
+  return {
     auth: {
-      getUser: vi.fn().mockResolvedValue({
-        data: { user: { id: "u1" } },
-      }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }),
     },
     from: vi.fn(() => ({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: BASE_INVOICE }),
+      single: vi.fn().mockResolvedValue({ data: invoiceData }),
     })),
-  }),
+  };
+}
+
+vi.mock("@/lib/supabase/server", () => ({
+  // Lazy default-impl: vi.mock is hoisted, BASE_INVOICE is in TDZ at hoist time.
+  createClient: vi.fn(async () => makeSupabaseMock(BASE_INVOICE)),
 }));
 
 vi.mock("next/navigation", () => ({ notFound: vi.fn() }));
 vi.mock("@/lib/btc-network", () => ({ getMempoolBaseUrl: () => "https://mempool.space" }));
 vi.mock("./invoice-actions", () => ({ InvoiceActions: () => null }));
 vi.mock("./invoice-detail-realtime", () => ({ InvoiceDetailRealtime: () => null }));
+vi.mock("./email-activity-card", () => ({ EmailActivityCard: () => null }));
 
 describe("InvoiceDetailPage — dates", () => {
   it("shows 'Date Sent:' label with formatted date", async () => {
@@ -67,14 +71,9 @@ describe("InvoiceDetailPage — dates", () => {
 
   it("shows 'No due date' when due_date is null", async () => {
     const { createClient } = await import("@/lib/supabase/server");
-    vi.mocked(createClient).mockResolvedValueOnce({
-      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }) },
-      from: vi.fn(() => ({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: { ...BASE_INVOICE, due_date: null } }),
-      })),
-    } as unknown as Awaited<ReturnType<typeof createClient>>);
+    vi.mocked(createClient).mockResolvedValueOnce(
+      makeSupabaseMock({ ...BASE_INVOICE, due_date: null }) as unknown as Awaited<ReturnType<typeof createClient>>,
+    );
     render(await InvoiceDetailPage({ params: Promise.resolve({ id: "inv-abc" }) }));
     expect(screen.getByText(/no due date/i)).toBeInTheDocument();
   });

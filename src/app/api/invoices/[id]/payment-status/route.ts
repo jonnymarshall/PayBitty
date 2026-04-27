@@ -102,6 +102,7 @@ export async function POST(
     if (ownerEmail) {
       const emailArgs = {
         to: ownerEmail,
+        userId: invoice.user_id,
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoice_number,
         clientName: invoice.client_name || "your client",

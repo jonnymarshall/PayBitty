@@ -186,6 +186,7 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
     expect(mockSendDetected).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "owner@example.com",
+        userId: "owner-1",
         invoiceId: "inv-1",
         invoiceNumber: "INV-1",
         clientName: "Ada",

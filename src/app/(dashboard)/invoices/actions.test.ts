@@ -133,6 +133,7 @@ describe("publishInvoice", () => {
     expect(sendInvoicePublishedEmail).toHaveBeenCalledTimes(1);
     expect(sendInvoicePublishedEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: "client@example.com",
+      userId: "user-1",
       senderName: "Charles",
       clientName: "Ada",
       invoiceId: "inv-7",
