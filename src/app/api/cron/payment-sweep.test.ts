@@ -144,8 +144,12 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
     stage_attempt: 0,
     invoice_number: "INV-1",
     client_name: "Ada",
+    client_email: "payer@example.com",
     total_fiat: 250,
     currency: "USD",
+    your_name: "Charles",
+    your_company: null,
+    your_email: "charles@example.com",
   };
 
   const unconfirmed = {
@@ -185,10 +189,12 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
     expect(mockSendDetected).toHaveBeenCalledTimes(1);
     expect(mockSendDetected).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "owner@example.com",
+        ownerEmail: "owner@example.com",
+        payerEmail: "payer@example.com",
         userId: "owner-1",
         invoiceId: "inv-1",
         invoiceNumber: "INV-1",
+        senderName: "Charles",
         clientName: "Ada",
         totalFiat: 250,
         currency: "USD",
@@ -196,6 +202,25 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
       })
     );
     expect(mockSendConfirmed).not.toHaveBeenCalled();
+  });
+
+  it("passes payerEmail: null when client_email is blank", async () => {
+    const noPayer = { ...pending, client_email: "" };
+    const { builder } = makeSelectBuilder([noPayer]);
+    const update = makeUpdateBuilder();
+    mockFrom.mockImplementation(() => ({ ...builder, update: update.factory }));
+    mockFetchAddressTxs.mockResolvedValue([unconfirmed]);
+    mockGetUserById.mockResolvedValue({ data: { user: { id: "owner-1", email: "owner@example.com" } } });
+
+    await getRequest(authHeaders());
+
+    expect(mockSendDetected).toHaveBeenCalledTimes(1);
+    expect(mockSendDetected).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerEmail: "owner@example.com",
+        payerEmail: null,
+      })
+    );
   });
 
   it("dispatches payment_confirmed email when a confirmed tx is seen on a payment_detected invoice", async () => {

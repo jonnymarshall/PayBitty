@@ -216,20 +216,21 @@ File: `src/app/invoice/[id]/use-public-invoice-realtime.ts`
 
 All transactional email goes through **Resend** via `src/lib/email/send.ts`. There are three email types, three triggers, and two recipient types.
 
-> **Supabase auth emails (magic-link, signup confirmation, password reset) also route through Resend** via Supabase's custom SMTP setting (dashboard → Project Settings → Auth → SMTP Settings, pointing at `smtp.resend.com:465`). This bypasses Supabase's default ~4/hour rate limit and uses the same verified `mail.satsend.me` sender domain as transactional mail. Both auth email *and* transactional email depend on the Resend account / domain being healthy.
+> **Supabase auth emails (magic-link, signup confirmation, password reset) also route through Resend** via Supabase's custom SMTP setting (dashboard → Project Settings → Auth → SMTP Settings, pointing at `smtp.resend.com:465`). The custom SMTP **Sender** is set to `team@mail.satsend.me` — the same address `EMAIL_FROM` uses for transactional mail — so all SatSend mail (auth + invoicing) arrives with one consistent `From:` identity. Both auth email *and* transactional email depend on the Resend account / domain being healthy.
 
 ### Triggers, senders, recipients
 
-| # | Email                 | Fires when…                                     | Callsite (server)                                        | Recipient           |
-|---|-----------------------|-------------------------------------------------|----------------------------------------------------------|---------------------|
-| 1 | **Invoice published** | `publishInvoice` flips a draft → `pending`      | `src/app/(dashboard)/invoices/actions.ts` → `publishInvoice` | Payer (`client_email`) |
-| 2 | **Payment detected**  | Status transitions → `payment_detected`         | `src/app/api/invoices/[id]/payment-status/route.ts` **or** `src/app/api/cron/payment-sweep/route.ts` | Invoice owner       |
-| 3 | **Payment confirmed** | Status transitions → `paid`                     | Same two callsites as above                              | Invoice owner       |
+| # | Email                 | Fires when…                                     | Callsite (server)                                        | Recipients                          |
+|---|-----------------------|-------------------------------------------------|----------------------------------------------------------|-------------------------------------|
+| 1 | **Invoice published** | `publishInvoice` flips a draft → `pending`      | `src/app/(dashboard)/invoices/actions.ts` → `publishInvoice` | Payer (`client_email`)              |
+| 2 | **Payment detected**  | Status transitions → `payment_detected`         | `src/app/api/invoices/[id]/payment-status/route.ts` **or** `src/app/api/cron/payment-sweep/route.ts` | Invoice owner **and** payer (`client_email`) |
+| 3 | **Payment confirmed** | Status transitions → `paid`                     | Same two callsites as above                              | Invoice owner **and** payer (`client_email`) |
 
 Notes:
-- The **invoice-published** email is the only one sent to the payer. It contains the invoice link and access code (if set). No email is sent to the payer when their payment is detected or confirmed — that information is already on the page they just paid through.
-- The **payment-detected** and **payment-confirmed** emails are sent to the invoice owner (resolved via `supabase.auth.admin.getUserById(invoice.user_id)`). Each one contains the invoice reference, a link to the owner's dashboard view, and a mempool.space link to the tx.
-- If `client_email` is blank on an invoice (payer email optional), the invoice-published email is silently skipped.
+- The **payment-detected** and **payment-confirmed** emails are dispatched to **both** recipients per transition: the owner gets an "your client paid invoice X" framing, and the payer gets a "your payment to {sender} has been detected / confirmed" framing. Each transition fires two distinct Resend calls with role-specific templates (`payment-detected-owner.tsx` / `payment-detected-payer.tsx`, and the same split for confirmed).
+- The owner email is resolved via `supabase.auth.admin.getUserById(invoice.user_id)`; the payer email is the invoice's `client_email`.
+- If `client_email` is blank on an invoice (payer email is optional), every payer-side send is silently skipped — including the invoice-published email and both payment-status emails. The owner copy still goes out.
+- Each email contains the invoice reference, a mempool.space link to the tx, and a link back to the right surface for that recipient (owner → dashboard view, payer → public invoice page).
 
 ### How duplicates are prevented
 
