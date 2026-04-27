@@ -4,9 +4,97 @@ Bitcoin-enabled invoicing for freelancers and small businesses.
 
 ---
 
-## Payment detection architecture
+## How payment detection works
 
-Paybitty watches the Bitcoin mempool from **four independent paths** so that a payment is caught regardless of who has which tab open. Each path reads mempool.space, updates the same `invoices` row in Supabase, and emits the same transactional emails.
+> **The plain-English version.** Skip to "Detailed mechanics" further down if you want code references and timing tables.
+
+### What we're trying to do
+
+When a payer sends Bitcoin to an invoice, the invoice's status needs to change from **Pending** → **Payment Detected** → **Paid**. That status lives in our database. Two pages care about it:
+
+- The **payer's page** at `/invoice/[id]` — public, anyone with the link can see it.
+- The **owner's pages** under `/invoices` — private, only the logged-in invoice owner.
+
+Both pages need to update **as soon as the status changes**, no matter who triggered it.
+
+### A few terms first
+
+| Term | What it means here |
+|------|---------------------|
+| **Mempool** | The "waiting room" for Bitcoin transactions. After a wallet broadcasts a tx but before a miner confirms it, it sits in the mempool. We use [mempool.space](https://mempool.space) as our window into it. |
+| **Confirmation** | A miner has put the tx into a block. 0 confirmations = "broadcast, in mempool, not yet in a block". 1+ confirmations = "in a block on the chain". |
+| **WebSocket** | A long-lived connection between your browser and a server that lets the server push messages **whenever something happens**. No need for the browser to keep asking. We use one to mempool.space and one to Supabase. |
+| **Polling** | The opposite of a WebSocket. The browser (or server) repeatedly asks "anything new?" on a timer. Slower and chattier than a push, but works as a fallback when sockets aren't available. |
+| **Cron** | A scheduled job. Vercel runs ours every minute, in the background, with no browser involved. Think of it as a server-side alarm clock that wakes up, checks the mempool for every active invoice, and goes back to sleep. |
+| **Realtime (Supabase)** | A separate WebSocket from the browser to Supabase that delivers **database changes** as they happen. Anything that updates an invoice row anywhere in the system shows up on the page within ~1 second. |
+
+### How a payment gets noticed (the three watchers)
+
+There are exactly **three things** that can spot an incoming payment. Faster ones first:
+
+#### 1. The mempool socket on the payer's page (sub-second, when it works)
+
+When a payer opens `/invoice/[id]`, the page **immediately** opens a WebSocket to mempool.space and asks it to "track this BTC address". The connection stays open for as long as the page is open.
+
+The moment a wallet broadcasts a payment to that address, mempool.space pushes a message down the socket. The page sends "I saw it" to our API, which writes `payment_detected` to the database.
+
+> **You do not need to click the "Pay now in Bitcoin" button for this to work.** That button only reveals the QR code; the watcher runs in the background regardless. Closing the tab stops the watcher.
+
+#### 2. The cron sweep (system-wide every minute, but each invoice on its own schedule)
+
+There are **two clocks** here, and it's worth keeping them straight:
+
+- **System clock** — Vercel Cron hits `/api/cron/payment-sweep` exactly once a minute, forever, regardless of how many invoices exist. This is what "every minute, no browser needed" refers to.
+- **Per-invoice clock** — each invoice has its own scheduled next check (`next_check_at`). When the system clock fires, the endpoint **only checks invoices whose own scheduled time has come up** — typically a small handful per minute, not every outstanding invoice.
+
+Each invoice's schedule is **front-loaded**, then tapers off:
+
+- **Right after publish, no tx in mempool yet** — checks at **+1 min, +5 min, +10 min, +30 min**, then **stops**. The invoice hibernates if nothing arrives in the first ~46 minutes.
+- **Once a tx hits the mempool** — schedule speeds back up: every 10 min × 3, then every 1 h × 6, then every 4 h × 12, then every 8 h × 24, over a total window of ~11 days.
+- **A confirmed tx at any point** promotes the invoice straight to **Paid** and the schedule stops.
+
+So: the cron itself runs every minute (system-wide), but a given invoice is **not** checked every minute — most of the time it's resting between scheduled checks. This avoids hammering mempool.space and burning cron compute on invoices nobody is paying.
+
+This is what catches payments while everyone's tabs are closed. It's slower than the mempool socket (up to ~60 s for the next cron tick + however long mempool.space takes to see the tx + the per-invoice schedule gap) but it's tireless and unattended.
+
+#### 3. The page's REST poll (only if the socket dies)
+
+If the mempool WebSocket drops (network hiccup, mempool.space restart), the payer's page falls back to asking mempool.space "any new txs?" every 10 seconds, doubling the gap each time it gets nothing back, capped at ~10 minutes.
+
+This is a backup, not a primary. **Most of the time you won't see it run.**
+
+### How the badge moves (the push to your screen)
+
+Spotting the payment is half the job. Once the database row changes, both the payer's and the owner's open pages need to **see** the change.
+
+That's what Supabase Realtime is for. Both pages open a Realtime WebSocket when they mount. When the database row changes — by **any** of the three mechanisms above — Realtime pushes the new row down those sockets, and the badge updates within ~1 second.
+
+So: a single status change can take three hops (mempool socket → API → database → Realtime → badge), but most of that is sub-second. The slowest link is **whoever spotted the tx**, not the push to the screen.
+
+### Why a payment might take 30+ seconds to show up
+
+The most common reason is **the mempool socket didn't catch it**, so you're waiting for the cron's 1-minute tick to find it instead. That happens when:
+
+- The mempool socket connected but mempool.space hadn't yet seen the broadcast tx when the page asked. This is genuinely common — propagation takes 5–30 s.
+- The mempool socket disconnected and the REST fallback hadn't been waiting long enough.
+- You're on testnet, where mempool.space is slower and less reliable than mainnet.
+
+When this happens, the cron eventually finds it (max 60 s) → updates the database → Realtime pushes to the page → badge flips. Total: 30–90 s instead of <1 s.
+
+### What happens when nothing is open
+
+Just the cron, plus a tapering schedule. After publish, checks happen at +1 min, +5 min, +10 min, +30 min, then **stop** if nothing has hit the mempool — at that point we assume the payer has abandoned the invoice. As soon as a tx **does** hit the mempool, the cron speeds back up: 10 min ×3, then 1 h ×6, then 4 h ×12, then 8 h ×24, then stop after ~11 days. A confirmation at any point promotes the invoice straight to **Paid**.
+
+### Two extras
+
+- **"Mark as Payment Sent" button.** When a payer clicks this, the page polls mempool.space hard for 60 seconds (every 2 s, then every 3 s, then every 5 s, then every 10 s — 15 polls total) and shows a progress dialog. It's a UX polish: the payer sees confirmation right after they paid instead of waiting for the next mempool socket message. The watcher and the cron are still running underneath.
+- **Visibility refresh safety net.** If you tab away for an hour and come back, the page does a quick refresh from the server in case the live socket missed anything while it was backgrounded.
+
+---
+
+## Detailed mechanics
+
+For the implementation specifics — file paths, exact intervals, code references — read on. The plain-English section above is enough to use and debug the system.
 
 ### Summary table
 
@@ -14,10 +102,11 @@ Paybitty watches the Bitcoin mempool from **four independent paths** so that a p
 |--------------------------------------------------------------------|------------------------------------------|-----------------------------------------------|------------------------------|
 | (A) Payer on `/invoice/[id]`, has **not** clicked "Payment Sent"   | Mempool WebSocket (+ polling fallback)   | Real-time push; fallback 10s → doubles → ~10m | < 1 second (push)            |
 | (B) Payer on `/invoice/[id]`, **clicks** "Mark as Payment Sent"    | Tiered active polling for 60 seconds     | 5×2s + 5×3s + 3×5s + 2×10s = 15 polls in 60s  | 2–10 seconds                 |
-| (C) Payer closed the tab; nobody logged in on the owner side       | Vercel Cron (background poll)            | Every minute, per-invoice back-off schedule   | 1–30 minutes pre-mempool; 10 min – 8 h post-mempool |
+| (C) Nobody has a page open                                         | Vercel Cron (background poll)            | Every minute, per-invoice back-off schedule   | 1–30 minutes pre-mempool; 10 min – 8 h post-mempool |
 | (D) Owner on `/invoices` or `/invoices/[id]`                       | Supabase Realtime subscription           | Pushed as soon as any other path updates DB   | < 1 second after DB update   |
+| (E) Payer on public `/invoice/[id]`                                | Supabase Realtime subscription (anon)    | Pushed as soon as any other path updates DB   | < 1 second after DB update   |
 
-> The payer's public `/invoice/[id]` page does **not** currently subscribe to Supabase Realtime. If the cron (path C) flips status while the payer is on that page, the payer's badge won't move until a refresh. This is scheduled to be fixed in **v1.4.2**.
+(A), (B), (C) are detection paths — they spot the on-chain payment. (D), (E) are display paths — they push the resulting database change to whatever page is open.
 
 ---
 
@@ -108,6 +197,18 @@ File: `src/app/(dashboard)/invoices/use-invoice-realtime.ts`
 - `visibilitychange` → `router.refresh()` is the safety net for silent socket drops.
 
 Works on both `/invoices` (list) and `/invoices/[id]` (detail). Any DB update from any other path (watcher, fast-path route, cron) appears on the owner's UI within ~1 second.
+
+---
+
+### (E) Payer live updates
+
+File: `src/app/invoice/[id]/use-public-invoice-realtime.ts`
+
+- Subscribes to Supabase Realtime UPDATE events on the `invoices` row matching the public page's id, using the **anon** key (the payer is unauthenticated).
+- Migration `0009_anon_select_for_realtime.sql` adds an anon SELECT policy on non-draft invoices so Realtime delivers events under RLS. Draft invoices remain owner-only.
+- The hook surfaces `payload.new` to the page, which applies the next status to local React state — so the badge moves without a `router.refresh()` (which would re-run the server fetch and clobber other in-flight UI state).
+- `visibilitychange` → `router.refresh()` is the safety net for silent socket drops.
+- The on-page mempool watcher (path A) is still the fastest source for transactions hitting the watched address; this Realtime path is the catch-all for cron-driven (path C) and owner-driven (e.g. mark-as-paid) transitions the watcher can't see.
 
 ---
 

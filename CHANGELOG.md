@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-04-24
+
+### Added
+- **Public payer page live updates.** New `usePublicInvoiceRealtime` hook (`src/app/invoice/[id]/use-public-invoice-realtime.ts`) subscribes the unauthenticated `/invoice/[id]` page to Supabase Realtime UPDATE events for the invoice id and applies `payload.new` to local React state. Cron-driven (path C) and owner-driven status transitions now flip the payer's badge within ~1 second without a refresh. The on-page mempool WebSocket watcher remains the fastest path for transactions hitting the watched address.
+- Migration `0009_anon_select_for_realtime.sql` adds an anon SELECT policy on non-draft invoices so Realtime delivers events to the public page under RLS. Draft invoices remain owner-only.
+- `visibilitychange` → `router.refresh()` safety net on the public page, mirroring the dashboard hook.
+
+### Changed
+- README "Payment detection architecture" — added path **(E) Payer live updates**, removed the v1.4.1 disclaimer noting that path (C) changes wouldn't reach the payer without a refresh.
+
 ## [1.4.1] - 2026-04-23
 
 ### Added

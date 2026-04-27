@@ -8,6 +8,7 @@ vi.mock("@/lib/btc-network", () => ({
   getMempoolWsUrl: () => "wss://mempool.space/testnet4/api/v1/ws",
 }));
 vi.mock("./payment-watcher", () => ({ PaymentWatcher: () => null }));
+vi.mock("./use-public-invoice-realtime", () => ({ usePublicInvoiceRealtime: () => {} }));
 vi.mock("@/components/btc-qr-code", () => ({ BtcQrCode: () => <div data-testid="btc-qr" /> }));
 vi.mock("./mark-sent-button", () => ({ MarkSentButton: () => null }));
 

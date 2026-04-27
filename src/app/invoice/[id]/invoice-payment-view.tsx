@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Invoice } from "@/lib/invoice-public";
 import { fiatToBtc, buildBip21Uri } from "@/lib/btc-qr";
 import { BtcQrCode } from "@/components/btc-qr-code";
@@ -11,6 +11,7 @@ import { MarkSentButton } from "./mark-sent-button";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/copy-button";
 import { getMempoolBaseUrl } from "@/lib/btc-network";
+import { usePublicInvoiceRealtime } from "./use-public-invoice-realtime";
 
 function isPayableStatus(s: Invoice["status"]): boolean {
   return s === "pending" || s === "overdue";
@@ -29,6 +30,14 @@ function fmtCurrency(amount: number, currency: string) {
 export function InvoicePaymentView({ invoice, btcPrice }: Props) {
   const [status, setStatus] = useState<Invoice["status"]>(invoice.status);
   const [userRevealedPayment, setUserRevealedPayment] = useState(false);
+
+  // Realtime fallback for cron-driven status changes the on-page mempool watcher
+  // can't observe. The watcher remains the fastest path when the payer is here.
+  const handleRealtimeUpdate = useCallback((next: { status?: Invoice["status"] }) => {
+    if (next.status) setStatus(next.status);
+  }, []);
+  usePublicInvoiceRealtime(invoice.id, handleRealtimeUpdate);
+
   // Auto-reveal payment details for invoices that aren't awaiting payment (already
   // detected/paid), so the txid link is visible without an extra click.
   const showPaymentDetails = userRevealedPayment || !isPayableStatus(status);
