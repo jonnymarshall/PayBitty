@@ -259,13 +259,29 @@ Every send goes through a `safeSend` wrapper (`src/lib/email/send.ts`) that:
 
 **A broken email provider never blocks a publish or a payment transition.** The invoice state is the source of truth; email is best-effort delivery on top of it.
 
-### What is *not* tracked
+### Email event log
 
-There is currently **no database log of emails** — no `sent_at` column, no `email_deliveries` table, no idempotency token. Evidence that an email was sent lives only in:
-- The Resend dashboard (per-message send history, retention per Resend plan).
-- Application stdout / Vercel runtime logs at send time.
+Every send attempt is recorded in the `email_events` table (migration `0010_email_events.sql`):
 
-This is a known limitation. If we needed to answer *"did the payer actually receive the invoice link?"* or *"why did this owner not get a confirmation email?"* after the fact, we'd be reading Resend webhooks. A lightweight `email_events` table is a candidate for a future version.
+| Column            | Meaning                                                                  |
+|-------------------|--------------------------------------------------------------------------|
+| `email_type`      | `invoice_published` / `payment_detected` / `payment_confirmed`           |
+| `recipient`       | The address Resend was asked to send to                                  |
+| `status`          | `queued` → terminal `sent` / `failed` / `skipped_no_api_key`             |
+| `resend_message_id` | Populated on `sent` from Resend's response — useful for cross-referencing the dashboard |
+| `error_message`   | First 500 chars of the failure reason (Resend error or thrown exception) |
+| `created_at` / `updated_at` | Timestamps for the row insert and its terminal-status update    |
+
+`safeSend` (`src/lib/email/send.ts`) inserts a `queued` row before each Resend call, then flips the row to its terminal status when the send returns or throws. Both the insert and the update are best-effort: a failed DB write logs and continues so a broken `email_events` table never blocks a publish or a payment transition.
+
+The table is owner-scoped via RLS (`auth.uid() = user_id`) and surfaces on `/invoices/[id]` as the **Email activity** card so the owner can answer *"did the payer get the link?"* or *"why didn't I get a confirmation email?"* without leaving the app.
+
+### What is *still not* tracked
+
+The `email_events` row records what happened at our end (we asked Resend, Resend acknowledged or rejected). It does not yet record what happened on the recipient's end:
+
+- **Delivered / bounced / complained / opened / clicked** — these are emitted by Resend as webhooks. A future version would expose `POST /api/webhooks/resend` and update rows by `resend_message_id`. For now, that detail lives in the Resend dashboard.
+- There is no retry queue: `failed` is terminal until someone manually triggers a resend.
 
 ---
 

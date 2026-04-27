@@ -7,6 +7,7 @@ import { PaymentWatcherUncontrolled } from "@/app/invoice/[id]/payment-watcher-u
 import { InvoiceDetailRealtime } from "./invoice-detail-realtime";
 import { CopyButton } from "@/components/copy-button";
 import { InvoiceActions } from "./invoice-actions";
+import { EmailActivityCard } from "./email-activity-card";
 import type { LineItem } from "@/lib/invoices";
 import { getMempoolBaseUrl } from "@/lib/btc-network";
 
@@ -172,6 +173,8 @@ export default async function InvoiceDetailPage({
       </div>
 
       <InvoiceActions invoice={invoice} />
+
+      <EmailActivityCard invoiceId={invoice.id} />
     </div>
   );
 }

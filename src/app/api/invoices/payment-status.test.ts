@@ -149,6 +149,7 @@ describe("POST /api/invoices/[id]/payment-status", () => {
     expect(mockSendConfirmed).not.toHaveBeenCalled();
     expect(mockSendDetected).toHaveBeenCalledWith(expect.objectContaining({
       to: "owner@example.com",
+      userId: "owner-1",
       invoiceId: "inv-1",
       invoiceNumber: "INV-PAY-1",
       clientName: "Ada",
@@ -171,6 +172,7 @@ describe("POST /api/invoices/[id]/payment-status", () => {
     expect(mockSendDetected).not.toHaveBeenCalled();
     expect(mockSendConfirmed).toHaveBeenCalledWith(expect.objectContaining({
       to: "owner@example.com",
+      userId: "owner-1",
       invoiceId: "inv-1",
       txid: "txabc",
     }));

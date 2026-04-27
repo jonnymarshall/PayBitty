@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-04-27
+
+### Added
+- **Email Event Log (DB-backed).** New `email_events` table records every transactional email the system tries to send: type (`invoice_published` / `payment_detected` / `payment_confirmed`), recipient, status (`queued` / `sent` / `failed` / `skipped_no_api_key`), Resend message id on success, error message on failure, and timestamps. Owner-scoped via RLS (`auth.uid() = user_id`).
+- Migration `supabase/migrations/0010_email_events.sql` creates the enums, table, indexes, and RLS policy.
+- **Email activity card** on `/invoices/[id]` lists every send attempt for that invoice with status, recipient, timestamp, and error detail (on hover) for failed attempts.
+
+### Changed
+- `safeSend` in `src/lib/email/send.ts` now takes an `EmailContext` (`invoiceId`, `userId`, `type`, `recipient`) and writes a row to `email_events` for every send attempt. Email send failures and DB write failures are best-effort and never block the parent flow.
+- `publishInvoice`, the fast-path payment status route, and the cron sweep all pass `user_id` into the email helpers so events are owner-scoped.
+
+### Notes
+- README "What is *not* tracked" section rewritten to describe the new table and what Resend-side data (bounces, complaints) is still only available in the Resend dashboard.
+
 ## [1.4.2] - 2026-04-24
 
 ### Added

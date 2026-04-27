@@ -98,6 +98,7 @@ export async function GET(request: NextRequest) {
         if (ownerEmail) {
           const emailArgs = {
             to: ownerEmail,
+            userId: inv.user_id,
             invoiceId: inv.id,
             invoiceNumber: inv.invoice_number,
             clientName: inv.client_name || "your client",

@@ -165,6 +165,7 @@ export async function publishInvoice(invoiceId: string) {
   if (invoice.client_email) {
     await sendInvoicePublishedEmail({
       to: invoice.client_email,
+      userId: invoice.user_id,
       senderName: invoice.your_name || invoice.your_company || invoice.your_email || "Paybitty user",
       clientName: invoice.client_name || "there",
       invoiceId: invoice.id,

@@ -491,11 +491,30 @@ Add to the "Pre-deployment Checklist" section at the bottom of this roadmap:
 
 ---
 
-### ⏳ v1.4.3 — Email Event Log (DB-backed)
+### ✅ v1.4.3 — Email Event Log (DB-backed)
 
 **Branch:** `v1.4.3/email-events-log`
 
 **Context:** v1.4 added three transactional emails (invoice published, payment detected, payment confirmed), and v1.4.1 added a second callsite for the payment emails (the background cron). Today there is **no persistent record** that any of these were sent — evidence only lives in Resend's dashboard and transient runtime logs. If a payer reports never receiving an invoice link, or an owner claims they never got a payment-confirmed email, there is no in-app way to answer *"was it sent, when, and did it succeed?"* This branch closes that gap.
+
+**Checklist:**
+- [x] Migration `0010_email_events.sql` (renumbered from 0009 — that slot was taken by v1.4.2's anon-select policy): enums, table, indexes, RLS, owner-read policy
+- [x] `src/lib/email/send.test.ts` covers queued→sent, skipped_no_api_key, failed-with-error-message, and DB-write-failure-doesn't-throw
+- [x] `safeSend` refactored to take `EmailContext { invoiceId, userId, type, recipient }` and write `email_events`
+- [x] All three `sendXxxEmail` functions build and pass `EmailContext`
+- [x] `publishInvoice` passes `invoice.user_id`; existing test asserts `userId: "user-1"`
+- [x] `payment-status` route passes `invoice.user_id`; existing test asserts `userId: "owner-1"`
+- [x] `payment-sweep` cron passes `inv.user_id`; existing test asserts `userId: "owner-1"`
+- [x] **Email Activity** card on `/invoices/[id]` (server component fetching `email_events` for the invoice)
+- [x] README "Email event log" + "What is *still not* tracked" sections rewritten
+- [x] CHANGELOG v1.4.3 entry
+- [x] Manual test guide: `manual-tests/v1.4.3-email-events-log.md` (6 tests + 90s smoke)
+- [x] ROADMAP flipped to ✅
+
+**Notes / deviations from the original spec:**
+- Migration filename is `0010_email_events.sql`, not `0009_email_events.sql` (the `0009` slot was taken by v1.4.2's anon-select policy).
+- Failed-row error rendering: spec said *"error message on hover"* (native `title` tooltip). Implementation surfaces the error **inline in red text below the row** instead — discoverable without hover, accessible to keyboard and screen-reader users.
+- Realtime auto-refresh of the activity card is **not wired up** (deferred). The existing v1.3.3 invoice realtime hook only refetches the invoice row, not its email events. Loading the page or any normal navigation re-fetches them server-side.
 
 ---
 
