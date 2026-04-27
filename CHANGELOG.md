@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2026-04-27
+
+### Added
+- **Payer now gets payment status emails.** When an invoice transitions `pending → payment_detected` or `payment_detected → paid`, the payer (`client_email`) receives a role-specific email alongside the owner, so the person who actually paid is no longer dependent on keeping the public invoice tab open. The payer-side send is silently skipped when `client_email` is blank.
+- New role-specific templates: `src/lib/email/templates/payment-detected-owner.tsx`, `payment-detected-payer.tsx`, `payment-confirmed-owner.tsx`, `payment-confirmed-payer.tsx`. Owner copy is framed "your client paid invoice X"; payer copy is framed "your payment to {sender} has been detected / confirmed".
+
+### Changed
+- `sendPaymentDetectedEmail` and `sendPaymentConfirmedEmail` (`src/lib/email/send.ts`) now take `{ ownerEmail, payerEmail, senderName, ... }` and make up to two `safeSend` calls per transition. The single-recipient `to` field is gone. Both callsites — the fast-path payment-status route and the cron sweep — fetch the additional invoice columns (`client_email`, `your_name`, `your_company`, `your_email`) and resolve `senderName` the same way `publishInvoice` does.
+- Old single `payment-detected.tsx` / `payment-confirmed.tsx` templates removed in favour of the four split templates above.
+
+### Notes
+- **Sender identity unified.** `EMAIL_FROM` is now `SatSend <team@mail.satsend.me>` (set in `.env` and Vercel project env vars). The Supabase custom SMTP **Sender** (Project Settings → Auth → SMTP Settings → Sender) is set to the same address so transactional mail and auth mail share a single `From:` identity. Pre-deployment checklist has a corresponding entry.
+- README "Email notifications" updated: detected/confirmed rows now show **owner and payer** as recipients, and the SMTP note calls out the unified sender address.
+
 ## [1.4.3] - 2026-04-27
 
 ### Added

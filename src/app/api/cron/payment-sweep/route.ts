@@ -22,9 +22,13 @@ interface InvoiceRow {
   stage_attempt: number;
   invoice_number: string | null;
   client_name: string;
+  client_email: string | null;
   total_fiat: number;
   currency: string;
   btc_txid: string | null;
+  your_name: string | null;
+  your_company: string | null;
+  your_email: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -40,7 +44,7 @@ export async function GET(request: NextRequest) {
   const { data: rows, error: fetchError } = await supabase
     .from("invoices")
     .select(
-      "id, user_id, btc_address, status, mempool_seen_at, stage_attempt, invoice_number, client_name, total_fiat, currency, btc_txid"
+      "id, user_id, btc_address, status, mempool_seen_at, stage_attempt, invoice_number, client_name, client_email, total_fiat, currency, btc_txid, your_name, your_company, your_email"
     )
     .in("status", ["pending", "payment_detected"])
     .lte("next_check_at", now.toISOString())
@@ -97,10 +101,12 @@ export async function GET(request: NextRequest) {
         const ownerEmail = userRecord?.user?.email;
         if (ownerEmail) {
           const emailArgs = {
-            to: ownerEmail,
+            ownerEmail,
+            payerEmail: inv.client_email || null,
             userId: inv.user_id,
             invoiceId: inv.id,
             invoiceNumber: inv.invoice_number,
+            senderName: inv.your_name || inv.your_company || inv.your_email || "Paybitty user",
             clientName: inv.client_name || "your client",
             totalFiat: inv.total_fiat,
             currency: inv.currency,

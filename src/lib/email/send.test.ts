@@ -19,7 +19,11 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-import { sendInvoicePublishedEmail } from "./send";
+import {
+  sendInvoicePublishedEmail,
+  sendPaymentDetectedEmail,
+  sendPaymentConfirmedEmail,
+} from "./send";
 
 const baseArgs = {
   to: "client@example.com",
@@ -116,5 +120,101 @@ describe("safeSend (via sendInvoicePublishedEmail)", () => {
     });
 
     await expect(sendInvoicePublishedEmail(baseArgs)).resolves.toBeUndefined();
+  });
+});
+
+describe("sendPaymentDetectedEmail", () => {
+  const paymentArgs = {
+    ownerEmail: "owner@example.com",
+    payerEmail: "payer@example.com",
+    userId: "user-1",
+    invoiceId: "inv-1",
+    invoiceNumber: "INV-1",
+    senderName: "Charles",
+    clientName: "Ada",
+    totalFiat: 250,
+    currency: "USD",
+    txid: "tx-abc",
+  };
+
+  it("sends one email to the owner and one to the payer when both addresses are set", async () => {
+    await sendPaymentDetectedEmail(paymentArgs);
+
+    expect(mockResendSend).toHaveBeenCalledTimes(2);
+    const recipients = mockResendSend.mock.calls.map((call) => call[0].to);
+    expect(recipients).toContain("owner@example.com");
+    expect(recipients).toContain("payer@example.com");
+  });
+
+  it("records two email_events rows — one per recipient", async () => {
+    await sendPaymentDetectedEmail(paymentArgs);
+
+    expect(mockInsert).toHaveBeenCalledTimes(2);
+    const recipients = mockInsert.mock.calls.map(([, row]) => (row as { recipient: string }).recipient);
+    expect(recipients).toContain("owner@example.com");
+    expect(recipients).toContain("payer@example.com");
+    for (const [, row] of mockInsert.mock.calls) {
+      expect((row as { email_type: string }).email_type).toBe("payment_detected");
+    }
+  });
+
+  it("skips the payer send when payerEmail is null", async () => {
+    await sendPaymentDetectedEmail({ ...paymentArgs, payerEmail: null });
+
+    expect(mockResendSend).toHaveBeenCalledTimes(1);
+    expect(mockResendSend.mock.calls[0][0].to).toBe("owner@example.com");
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the payer send when payerEmail is an empty string", async () => {
+    await sendPaymentDetectedEmail({ ...paymentArgs, payerEmail: "" });
+
+    expect(mockResendSend).toHaveBeenCalledTimes(1);
+    expect(mockResendSend.mock.calls[0][0].to).toBe("owner@example.com");
+  });
+
+  it("uses an owner-framed subject for the owner and a payer-framed subject for the payer", async () => {
+    await sendPaymentDetectedEmail(paymentArgs);
+
+    const ownerCall = mockResendSend.mock.calls.find((c) => c[0].to === "owner@example.com");
+    const payerCall = mockResendSend.mock.calls.find((c) => c[0].to === "payer@example.com");
+    expect(ownerCall?.[0].subject).toMatch(/INV-1/);
+    expect(ownerCall?.[0].subject?.toLowerCase()).toMatch(/your client|payment/);
+    expect(payerCall?.[0].subject?.toLowerCase()).toMatch(/your payment/);
+  });
+});
+
+describe("sendPaymentConfirmedEmail", () => {
+  const paymentArgs = {
+    ownerEmail: "owner@example.com",
+    payerEmail: "payer@example.com",
+    userId: "user-1",
+    invoiceId: "inv-1",
+    invoiceNumber: "INV-1",
+    senderName: "Charles",
+    clientName: "Ada",
+    totalFiat: 250,
+    currency: "USD",
+    txid: "tx-abc",
+  };
+
+  it("sends one email to the owner and one to the payer when both addresses are set", async () => {
+    await sendPaymentConfirmedEmail(paymentArgs);
+
+    expect(mockResendSend).toHaveBeenCalledTimes(2);
+    const recipients = mockResendSend.mock.calls.map((call) => call[0].to);
+    expect(recipients).toContain("owner@example.com");
+    expect(recipients).toContain("payer@example.com");
+  });
+
+  it("skips the payer send when payerEmail is blank", async () => {
+    await sendPaymentConfirmedEmail({ ...paymentArgs, payerEmail: null });
+
+    expect(mockResendSend).toHaveBeenCalledTimes(1);
+    expect(mockResendSend.mock.calls[0][0].to).toBe("owner@example.com");
+  });
+
+  it("renders distinct templates for the owner and the payer (no throw)", async () => {
+    await expect(sendPaymentConfirmedEmail(paymentArgs)).resolves.toBeUndefined();
   });
 });

@@ -1,8 +1,10 @@
 import { getResend, getFromAddress, getAppUrl } from "./client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { InvoicePublishedEmail } from "./templates/invoice-published";
-import { PaymentDetectedEmail } from "./templates/payment-detected";
-import { PaymentConfirmedEmail } from "./templates/payment-confirmed";
+import { PaymentDetectedOwnerEmail } from "./templates/payment-detected-owner";
+import { PaymentDetectedPayerEmail } from "./templates/payment-detected-payer";
+import { PaymentConfirmedOwnerEmail } from "./templates/payment-confirmed-owner";
+import { PaymentConfirmedPayerEmail } from "./templates/payment-confirmed-payer";
 
 export type EmailType =
   | "invoice_published"
@@ -141,10 +143,12 @@ export async function sendInvoicePublishedEmail(args: SendInvoicePublishedArgs):
 }
 
 export interface SendPaymentStatusArgs {
-  to: string;
+  ownerEmail: string;
+  payerEmail: string | null;
   userId: string;
   invoiceId: string;
   invoiceNumber: string | null;
+  senderName: string;
   clientName: string;
   totalFiat: number;
   currency: string;
@@ -156,29 +160,63 @@ function mempoolLink(txid: string): string {
   return `${base}/tx/${txid}`;
 }
 
+const InvoiceLabel = (n: string | null) => (n ? `Invoice ${n}` : "Your invoice");
+
 export async function sendPaymentDetectedEmail(args: SendPaymentStatusArgs): Promise<void> {
+  const totalDisplay = fmtCurrency(args.totalFiat, args.currency);
+  const mempoolUrl = mempoolLink(args.txid);
+
   await safeSend(
     {
       invoiceId: args.invoiceId,
       userId: args.userId,
       type: "payment_detected",
-      recipient: args.to,
+      recipient: args.ownerEmail,
     },
     async () => {
       const resend = getResend()!;
       return await resend.emails.send({
         from: getFromAddress(),
-        to: args.to,
+        to: args.ownerEmail,
         subject: args.invoiceNumber
-          ? `Payment detected for invoice ${args.invoiceNumber}`
-          : "Payment detected on your invoice",
-        react: PaymentDetectedEmail({
+          ? `Your client paid invoice ${args.invoiceNumber}`
+          : "Your client paid an invoice",
+        react: PaymentDetectedOwnerEmail({
           invoiceNumber: args.invoiceNumber,
           clientName: args.clientName,
-          totalDisplay: fmtCurrency(args.totalFiat, args.currency),
+          totalDisplay,
           txid: args.txid,
-          mempoolUrl: mempoolLink(args.txid),
+          mempoolUrl,
           dashboardUrl: `${getAppUrl()}/invoices/${args.invoiceId}`,
+        }),
+      });
+    },
+  );
+
+  if (!args.payerEmail) return;
+
+  await safeSend(
+    {
+      invoiceId: args.invoiceId,
+      userId: args.userId,
+      type: "payment_detected",
+      recipient: args.payerEmail,
+    },
+    async () => {
+      const resend = getResend()!;
+      return await resend.emails.send({
+        from: getFromAddress(),
+        to: args.payerEmail!,
+        subject: args.invoiceNumber
+          ? `Your payment for invoice ${args.invoiceNumber} has been detected`
+          : "Your payment has been detected",
+        react: PaymentDetectedPayerEmail({
+          invoiceNumber: args.invoiceNumber,
+          senderName: args.senderName,
+          totalDisplay,
+          txid: args.txid,
+          mempoolUrl,
+          invoiceUrl: `${getAppUrl()}/invoice/${args.invoiceId}`,
         }),
       });
     },
@@ -186,30 +224,63 @@ export async function sendPaymentDetectedEmail(args: SendPaymentStatusArgs): Pro
 }
 
 export async function sendPaymentConfirmedEmail(args: SendPaymentStatusArgs): Promise<void> {
+  const totalDisplay = fmtCurrency(args.totalFiat, args.currency);
+  const mempoolUrl = mempoolLink(args.txid);
+
   await safeSend(
     {
       invoiceId: args.invoiceId,
       userId: args.userId,
       type: "payment_confirmed",
-      recipient: args.to,
+      recipient: args.ownerEmail,
     },
     async () => {
       const resend = getResend()!;
       return await resend.emails.send({
         from: getFromAddress(),
-        to: args.to,
+        to: args.ownerEmail,
         subject: args.invoiceNumber
-          ? `Payment confirmed for invoice ${args.invoiceNumber}`
-          : "Payment confirmed on your invoice",
-        react: PaymentConfirmedEmail({
+          ? `${InvoiceLabel(args.invoiceNumber)} confirmed on-chain`
+          : "Your invoice payment is confirmed",
+        react: PaymentConfirmedOwnerEmail({
           invoiceNumber: args.invoiceNumber,
           clientName: args.clientName,
-          totalDisplay: fmtCurrency(args.totalFiat, args.currency),
+          totalDisplay,
           txid: args.txid,
-          mempoolUrl: mempoolLink(args.txid),
+          mempoolUrl,
           dashboardUrl: `${getAppUrl()}/invoices/${args.invoiceId}`,
         }),
       });
     },
   );
+
+  if (!args.payerEmail) return;
+
+  await safeSend(
+    {
+      invoiceId: args.invoiceId,
+      userId: args.userId,
+      type: "payment_confirmed",
+      recipient: args.payerEmail,
+    },
+    async () => {
+      const resend = getResend()!;
+      return await resend.emails.send({
+        from: getFromAddress(),
+        to: args.payerEmail!,
+        subject: args.invoiceNumber
+          ? `Your payment for invoice ${args.invoiceNumber} is confirmed`
+          : "Your payment is confirmed",
+        react: PaymentConfirmedPayerEmail({
+          invoiceNumber: args.invoiceNumber,
+          senderName: args.senderName,
+          totalDisplay,
+          txid: args.txid,
+          mempoolUrl,
+          invoiceUrl: `${getAppUrl()}/invoice/${args.invoiceId}`,
+        }),
+      });
+    },
+  );
 }
+

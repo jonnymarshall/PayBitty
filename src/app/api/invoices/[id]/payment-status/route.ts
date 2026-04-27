@@ -34,7 +34,7 @@ export async function POST(
   const { data: invoice, error } = await supabase
     .from("invoices")
     .select(
-      "id, btc_address, status, user_id, invoice_number, client_name, total_fiat, currency, mempool_seen_at, stage_attempt"
+      "id, btc_address, status, user_id, invoice_number, client_name, client_email, total_fiat, currency, mempool_seen_at, stage_attempt, your_name, your_company, your_email"
     )
     .eq("id", id)
     .single();
@@ -101,10 +101,12 @@ export async function POST(
     const ownerEmail = userRecord?.user?.email;
     if (ownerEmail) {
       const emailArgs = {
-        to: ownerEmail,
+        ownerEmail,
+        payerEmail: invoice.client_email || null,
         userId: invoice.user_id,
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoice_number,
+        senderName: invoice.your_name || invoice.your_company || invoice.your_email || "Paybitty user",
         clientName: invoice.client_name || "your client",
         totalFiat: invoice.total_fiat,
         currency: invoice.currency,
