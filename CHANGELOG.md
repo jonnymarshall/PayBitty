@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] - 2026-04-28
+
+### Added
+- **`Download PDF` action on the `/invoices` per-row dropdown** for non-draft rows. Reuses the existing `/api/invoices/[id]/pdf` endpoint, so users can download a PDF without navigating to the invoice detail page. Drafts stay excluded since they have no public URL/PDF.
+
+### Changed
+- **PDF filename format** changed from `invoice-<invoiceName>.pdf` to `<sender>_<invoiceName>_<YYYYMMDD>.pdf`, where:
+  - `<sender>` = `your_company`, else `your_name`, else `your_email` prefix (before `@`), else literal `invoice`. Slashes/backslashes stripped, whitespace collapsed to `_`.
+  - `<invoiceName>` = `invoice_number` if set, else the short id `…xxxxxxxx`.
+  - `<YYYYMMDD>` = the invoice creation date in UTC.
+- New helper `src/lib/invoices/pdf-filename.ts` is the single source of truth (full unit-test coverage in `pdf-filename.test.ts`). The download route emits both an ASCII `filename=` and an RFC 5987 `filename*=UTF-8''…` so filenames containing the unicode ellipsis travel correctly through HTTP headers.
+
 ## [1.4.4] - 2026-04-27
 
 ### Added

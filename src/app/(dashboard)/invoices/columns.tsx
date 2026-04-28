@@ -173,6 +173,7 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                   <DropdownMenuItem onClick={() => actions.onCopyPublicLink(invoice.id)}>
                     Copy public link
                   </DropdownMenuItem>
+                  <DropdownMenuItem render={<a href={`/api/invoices/${invoice.id}/pdf`} download>Download PDF</a>} />
                 </>
               )}
               {isDraft && (

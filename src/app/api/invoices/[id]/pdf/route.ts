@@ -1,11 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderInvoicePdf } from "@/lib/invoices/invoice-pdf";
+import { buildPdfFilename } from "@/lib/invoices/pdf-filename";
 import type { Invoice } from "@/lib/invoice-public";
-
-function safeFilenameSegment(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]+/g, "_");
-}
 
 export async function GET(
   _request: NextRequest,
@@ -28,14 +25,15 @@ export async function GET(
   }
 
   const pdf = await renderInvoicePdf(invoice as Invoice);
-  const label = safeFilenameSegment(invoice.invoice_number ?? id);
-  const filename = `invoice-${label}.pdf`;
+  const filename = buildPdfFilename(invoice as Invoice);
+  const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
+  const encodedFilename = encodeURIComponent(filename);
 
   return new NextResponse(new Uint8Array(pdf), {
     status: 200,
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="${filename}"`,
+      "content-disposition": `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`,
       "cache-control": "private, no-store",
     },
   });
