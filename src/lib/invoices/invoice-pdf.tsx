@@ -3,7 +3,6 @@ import { format } from "date-fns";
 import QRCode from "qrcode";
 import type { Invoice } from "@/lib/invoice-public";
 import { brandColors } from "@/lib/brand-colors";
-import { buildSpotPriceUrl } from "./spot-price";
 
 function fmtCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
@@ -112,17 +111,15 @@ const styles = StyleSheet.create({
   },
   mono: { fontFamily: "Courier", fontSize: 10, marginBottom: 8 },
   btcNote: { fontSize: 9, color: brandColors.foreground, marginBottom: 4, lineHeight: 1.4 },
-  spotLink: { color: brandColors.primary, fontSize: 9, textDecoration: "underline" },
 });
 
 interface RenderProps {
   invoice: Invoice;
   publicUrl: string;
-  spotUrl: string;
   qrDataUrl: string | null;
 }
 
-function InvoiceDocument({ invoice, publicUrl, spotUrl, qrDataUrl }: RenderProps) {
+function InvoiceDocument({ invoice, publicUrl, qrDataUrl }: RenderProps) {
   const lineTotal = (li: Invoice["line_items"][number]) => li.quantity * li.unit_price;
 
   return (
@@ -205,13 +202,11 @@ function InvoiceDocument({ invoice, publicUrl, spotUrl, qrDataUrl }: RenderProps
               {qrDataUrl ? <Image src={qrDataUrl} style={styles.btcQr} /> : null}
               <View style={styles.btcInfo}>
                 <Text style={styles.btcLabel}>Pay with Bitcoin</Text>
-
                 <Text style={styles.mono}>{invoice.btc_address}</Text>
                 <Text style={styles.btcNote}>
-                  The QR code does not encode an amount. To find the {invoice.currency} amount in BTC, please use the
-                  current Coinbase spot price:
+                  Please note: the Bitcoin QR code on this invoice does not encode the amount. For a simpler payment
+                  experience, visit the &quot;View and pay online&quot; link above.
                 </Text>
-                <Link src={spotUrl} style={styles.spotLink}>{spotUrl}</Link>
               </View>
             </View>
           ) : null}
@@ -230,7 +225,6 @@ export async function renderInvoicePdf(
   opts: RenderInvoicePdfOptions
 ): Promise<Buffer> {
   const publicUrl = `${opts.appUrl.replace(/\/$/, "")}/invoice/${invoice.id}`;
-  const spotUrl = buildSpotPriceUrl(invoice.currency);
   const qrDataUrl =
     invoice.accepts_bitcoin && invoice.btc_address
       ? await QRCode.toDataURL(`bitcoin:${invoice.btc_address}`, {
@@ -241,6 +235,6 @@ export async function renderInvoicePdf(
       : null;
 
   return renderToBuffer(
-    <InvoiceDocument invoice={invoice} publicUrl={publicUrl} spotUrl={spotUrl} qrDataUrl={qrDataUrl} />
+    <InvoiceDocument invoice={invoice} publicUrl={publicUrl} qrDataUrl={qrDataUrl} />
   );
 }

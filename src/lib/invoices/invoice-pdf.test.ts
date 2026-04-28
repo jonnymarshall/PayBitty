@@ -103,13 +103,15 @@ describe("renderInvoicePdf", () => {
     expect(text).toContain("https://paybitty.app/invoice/inv-id-1");
   });
 
-  it("includes a Coinbase spot-price URL matching the invoice currency", async () => {
+  it("explains that the QR code does not encode an amount and points the payer to the public link", async () => {
     const text = await textFromPdf(baseInvoice);
-    expect(text).toContain("https://api.coinbase.com/v2/prices/BTC-USD/spot");
+    expect(text).toContain("does not encode the amount");
+    expect(text).toContain("View and pay online");
   });
 
-  it("uses the invoice currency in the spot URL (e.g. EUR)", async () => {
-    const text = await textFromPdf({ ...baseInvoice, currency: "EUR" });
-    expect(text).toContain("https://api.coinbase.com/v2/prices/BTC-EUR/spot");
+  it("does not link to any third-party spot-price API from the BTC block", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).not.toContain("api.coinbase.com");
+    expect(text).not.toContain("api.coingecko.com");
   });
 });

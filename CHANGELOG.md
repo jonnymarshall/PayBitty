@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Coloured header band using the brand primary (`#DE3C4B`), pulled from the new `src/lib/brand-colors.ts` module that mirrors the canonical hex values declared in `globals.css`. When the brand redesign updates `globals.css`, both surfaces update in lockstep.
   - **Date Created** and **Date Due** labels in the meta block; `Date Due` falls back to `"No due date"` when the invoice has none.
   - **View and pay online** clickable link to the public invoice URL (`<appUrl>/invoice/<id>`), so payers can jump from a printed/emailed PDF straight to the live page.
-  - **BTC QR code** rendered into the Pay-with-Bitcoin block. The QR encodes a BIP-21 `bitcoin:<address>` URI **without** an amount (since the BTC amount depends on the spot price at payment time). Accompanied by a short note and a clickable hyperlink to `https://api.coinbase.com/v2/prices/BTC-{currency}/spot` so the payer can convert at the moment they pay; the URL is built from the new `buildSpotPriceUrl` helper and adapts to the invoice currency.
+  - **BTC QR code** rendered into the Pay-with-Bitcoin block. The QR encodes a BIP-21 `bitcoin:<address>` URI **without** an amount (since the BTC amount depends on the spot price at payment time). The accompanying copy directs the payer to the public **View and pay online** page rather than to a third-party spot-price API — the public page already does the live conversion and shows an amount-encoded QR, so a separate calculation step is unnecessary.
 - `renderInvoicePdf` now takes an `{ appUrl }` option; the route passes `getAppUrl()` from the shared email client helper.
 
 ### Changed
