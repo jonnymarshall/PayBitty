@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderInvoicePdf } from "@/lib/invoices/invoice-pdf";
 import { buildPdfFilename } from "@/lib/invoices/pdf-filename";
+import { getAppUrl } from "@/lib/email/client";
 import type { Invoice } from "@/lib/invoice-public";
 
 export async function GET(
@@ -24,7 +25,7 @@ export async function GET(
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
 
-  const pdf = await renderInvoicePdf(invoice as Invoice);
+  const pdf = await renderInvoicePdf(invoice as Invoice, { appUrl: getAppUrl() });
   const filename = buildPdfFilename({ ...(invoice as Invoice), account_email: user.email ?? null });
   const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
   const encodedFilename = encodeURIComponent(filename);
