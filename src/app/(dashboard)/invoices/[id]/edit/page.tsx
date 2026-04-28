@@ -27,6 +27,7 @@ export default async function EditInvoicePage({
       <h1 className="text-2xl font-semibold">Edit Invoice</h1>
       <InvoiceForm
         invoiceId={id}
+        sessionEmail={user!.email}
         initialValues={{
           invoice_number: invoice.invoice_number ?? "",
           your_name: invoice.your_name ?? "",

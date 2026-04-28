@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { verifyAccessCode, type AccessCodeState } from "./actions";
 
 interface Props {
@@ -12,6 +12,7 @@ const initialState: AccessCodeState = { error: undefined };
 export function AccessCodeGate({ invoiceId }: Props) {
   const boundAction = verifyAccessCode.bind(null, invoiceId);
   const [state, formAction, pending] = useActionState(boundAction, initialState);
+  const [code, setCode] = useState("");
 
   return (
     <main id="access-gate--main" className="flex min-h-screen items-center justify-center p-6">
@@ -34,7 +35,9 @@ export function AccessCodeGate({ invoiceId }: Props) {
               type="text"
               autoComplete="off"
               autoFocus
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toLowerCase().slice(0, 16))}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono tracking-widest shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
             {state?.error && (
               <p id="access-gate--error" className="text-sm text-destructive">{state.error}</p>

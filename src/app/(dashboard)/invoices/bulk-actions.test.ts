@@ -143,6 +143,26 @@ describe("bulkArchive", () => {
     expect(updatePayloads).toEqual([]);
   });
 
+  it("returns archived and skipped counts so callers can surface feedback", async () => {
+    makeSupabase({
+      selectResult: {
+        data: [
+          { id: "inv-1", status: "paid" },
+          { id: "inv-2", status: "overdue" },
+        ],
+        error: null,
+      },
+    });
+    const result = await bulkArchive(["inv-1", "inv-2", "inv-3", "inv-4"]);
+    expect(result).toEqual({ archived: 2, skipped: 2 });
+  });
+
+  it("returns archived=0, skipped=N when nothing matches", async () => {
+    makeSupabase({ selectResult: { data: [], error: null } });
+    const result = await bulkArchive(["inv-1", "inv-2"]);
+    expect(result).toEqual({ archived: 0, skipped: 2 });
+  });
+
   it("throws when the update step returns an error", async () => {
     makeSupabase({
       selectResult: { data: [{ id: "inv-1", status: "paid" }], error: null },

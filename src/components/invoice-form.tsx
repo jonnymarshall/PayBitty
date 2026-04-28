@@ -10,6 +10,9 @@ import { computeInvoiceTotals, isValidEmail, isValidBtcAddress, parseServerError
 interface InvoiceFormProps {
   invoiceId?: string;
   initialValues?: Partial<FormState>;
+  // When provided, locks your_email to the session user's email. A future branch
+  // can re-introduce per-invoice override behind a toggle — explicit non-goal here.
+  sessionEmail?: string;
 }
 
 interface FormState {
@@ -54,12 +57,17 @@ const DEFAULT_STATE: FormState = {
   access_code: "",
 };
 
-export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
+export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceFormProps) {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>({ ...DEFAULT_STATE, ...initialValues });
+  const initialState: FormState = {
+    ...DEFAULT_STATE,
+    ...initialValues,
+    ...(sessionEmail ? { your_email: sessionEmail } : {}),
+  };
+  const [form, setForm] = useState<FormState>(initialState);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const initialFormRef = useRef(JSON.stringify({ ...DEFAULT_STATE, ...initialValues }));
+  const initialFormRef = useRef(JSON.stringify(initialState));
 
   // Raw string display values for qty/unit_price so "0" and "" are distinct
   const [rawAmounts, setRawAmounts] = useState<{ quantity: string; unit_price: string }[]>(() =>
@@ -252,7 +260,14 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
             <input id="input-your-name" type="text" value={form.your_name} onChange={(e) => set("your_name", e.target.value)} className={inputCls} />
           </Field>
           <Field label="Email" error={errors.your_email}>
-            <input id="input-your-email" type="email" value={form.your_email} onChange={(e) => set("your_email", e.target.value)} className={inputCls} />
+            <input
+              id="input-your-email"
+              type="email"
+              value={form.your_email}
+              onChange={(e) => set("your_email", e.target.value)}
+              disabled={!!sessionEmail}
+              className={`${inputCls} disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70`}
+            />
           </Field>
           <Field label="Company">
             <input id="input-your-company" type="text" value={form.your_company} onChange={(e) => set("your_company", e.target.value)} className={inputCls} />
@@ -443,9 +458,9 @@ export function InvoiceForm({ invoiceId, initialValues }: InvoiceFormProps) {
             id="input-access-code"
             type="text"
             value={form.access_code}
-            onChange={(e) => set("access_code", e.target.value.toUpperCase().slice(0, 16))}
+            onChange={(e) => set("access_code", e.target.value.toLowerCase().slice(0, 16))}
             className={`${inputCls} max-w-[200px] font-mono tracking-widest`}
-            placeholder="e.g. MYCODE01"
+            placeholder="e.g. mycode01"
           />
           <p id="hint-access-code" className="text-xs text-muted-foreground">Leave blank for no access code — anyone with the link can view.</p>
         </Field>

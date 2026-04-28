@@ -22,6 +22,52 @@ vi.mock("@/app/(dashboard)/invoices/actions", () => ({
   publishInvoice: vi.fn().mockResolvedValue({}),
 }));
 
+describe("InvoiceForm your_email field", () => {
+  it("prefills your_email from sessionEmail and renders it disabled", () => {
+    render(<InvoiceForm sessionEmail="owner@example.com" />);
+    const input = document.getElementById("input-your-email") as HTMLInputElement;
+    expect(input.value).toBe("owner@example.com");
+    expect(input.disabled).toBe(true);
+  });
+
+  it("ignores initialValues.your_email and uses sessionEmail when both are provided", () => {
+    render(
+      <InvoiceForm
+        sessionEmail="owner@example.com"
+        initialValues={{ your_email: "stale@example.com" }}
+      />
+    );
+    const input = document.getElementById("input-your-email") as HTMLInputElement;
+    expect(input.value).toBe("owner@example.com");
+  });
+
+  it("does not allow typing in the disabled your_email field", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm sessionEmail="owner@example.com" />);
+    const input = document.getElementById("input-your-email") as HTMLInputElement;
+    await user.type(input, "x");
+    expect(input.value).toBe("owner@example.com");
+  });
+});
+
+describe("InvoiceForm access code", () => {
+  it("lowercases access codes as the user types", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+    const input = document.getElementById("input-access-code") as HTMLInputElement;
+    await user.type(input, "FoO12");
+    expect(input.value).toBe("foo12");
+  });
+
+  it("clamps access codes to 16 characters", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+    const input = document.getElementById("input-access-code") as HTMLInputElement;
+    await user.type(input, "a".repeat(20));
+    expect(input.value).toHaveLength(16);
+  });
+});
+
 describe("InvoiceForm BTC address validation", () => {
   it("shows an error when publishing with an invalid BTC address", async () => {
     const user = userEvent.setup();
