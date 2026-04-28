@@ -265,10 +265,8 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
               type="email"
               value={form.your_email}
               onChange={(e) => set("your_email", e.target.value)}
-              className={inputCls}
-              readOnly={!!sessionEmail}
-              aria-readonly={!!sessionEmail}
-              tabIndex={sessionEmail ? -1 : undefined}
+              disabled={!!sessionEmail}
+              className={`${inputCls} disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-70`}
             />
           </Field>
           <Field label="Company">

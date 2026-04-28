@@ -23,11 +23,11 @@ vi.mock("@/app/(dashboard)/invoices/actions", () => ({
 }));
 
 describe("InvoiceForm your_email field", () => {
-  it("prefills your_email from sessionEmail and renders it read-only", () => {
+  it("prefills your_email from sessionEmail and renders it disabled", () => {
     render(<InvoiceForm sessionEmail="owner@example.com" />);
     const input = document.getElementById("input-your-email") as HTMLInputElement;
     expect(input.value).toBe("owner@example.com");
-    expect(input.readOnly).toBe(true);
+    expect(input.disabled).toBe(true);
   });
 
   it("ignores initialValues.your_email and uses sessionEmail when both are provided", () => {
@@ -41,7 +41,7 @@ describe("InvoiceForm your_email field", () => {
     expect(input.value).toBe("owner@example.com");
   });
 
-  it("does not allow typing in the read-only your_email field", async () => {
+  it("does not allow typing in the disabled your_email field", async () => {
     const user = userEvent.setup();
     render(<InvoiceForm sessionEmail="owner@example.com" />);
     const input = document.getElementById("input-your-email") as HTMLInputElement;
