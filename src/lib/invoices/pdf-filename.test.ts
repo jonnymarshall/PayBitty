@@ -41,7 +41,7 @@ describe("buildPdfFilename", () => {
     ).toBe("alice.smith_INV-003_20260420.pdf");
   });
 
-  it('uses literal "invoice" when no sender info is present', () => {
+  it("falls back to the account_email prefix when invoice sender fields are all blank", () => {
     expect(
       buildPdfFilename({
         id: "11111111-2222-3333-4444-555555555555",
@@ -50,8 +50,22 @@ describe("buildPdfFilename", () => {
         your_name: null,
         your_email: null,
         created_at: "2026-04-20T10:00:00Z",
+        account_email: "jonnymarshall5@example.com",
       })
-    ).toBe("invoice_INV-004_20260420.pdf");
+    ).toBe("jonnymarshall5_INV-004_20260420.pdf");
+  });
+
+  it('uses literal "invoice" only when every email/name/company source is missing', () => {
+    expect(
+      buildPdfFilename({
+        id: "11111111-2222-3333-4444-555555555555",
+        invoice_number: "INV-004b",
+        your_company: null,
+        your_name: null,
+        your_email: null,
+        created_at: "2026-04-20T10:00:00Z",
+      })
+    ).toBe("invoice_INV-004b_20260420.pdf");
   });
 
   it("treats blank-string sender fields as missing", () => {

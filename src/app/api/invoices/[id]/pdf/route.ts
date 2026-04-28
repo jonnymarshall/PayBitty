@@ -25,7 +25,7 @@ export async function GET(
   }
 
   const pdf = await renderInvoicePdf(invoice as Invoice);
-  const filename = buildPdfFilename(invoice as Invoice);
+  const filename = buildPdfFilename({ ...(invoice as Invoice), account_email: user.email ?? null });
   const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
   const encodedFilename = encodeURIComponent(filename);
 

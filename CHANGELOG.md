@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **PDF filename format** changed from `invoice-<invoiceName>.pdf` to `<sender>_<invoiceName>_<YYYYMMDD>.pdf`, where:
-  - `<sender>` = `your_company`, else `your_name`, else `your_email` prefix (before `@`), else literal `invoice`. Slashes/backslashes stripped, whitespace collapsed to `_`.
+  - `<sender>` = `your_company`, else `your_name`, else invoice `your_email` prefix, else the authenticated user's account email prefix, else literal `invoice`. Slashes/backslashes stripped, whitespace collapsed to `_`.
   - `<invoiceName>` = `invoice_number` if set, else the short id `…xxxxxxxx`.
   - `<YYYYMMDD>` = the invoice creation date in UTC.
 - New helper `src/lib/invoices/pdf-filename.ts` is the single source of truth (full unit-test coverage in `pdf-filename.test.ts`). The download route emits both an ASCII `filename=` and an RFC 5987 `filename*=UTF-8''…` so filenames containing the unicode ellipsis travel correctly through HTTP headers.

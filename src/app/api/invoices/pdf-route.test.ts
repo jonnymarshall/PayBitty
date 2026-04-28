@@ -119,4 +119,24 @@ describe("GET /api/invoices/[id]/pdf", () => {
     expect(disposition).toContain("filename*=UTF-8''Sender_%E2%80%A6mnop3456_20260420.pdf");
     expect(disposition).toContain('filename="Sender__mnop3456_20260420.pdf"');
   });
+
+  it("falls back to the authenticated user's email when invoice has no your_company/your_name/your_email", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: "owner-1", email: "jonnymarshall5@example.com" } },
+    });
+    mockSingle.mockResolvedValueOnce({
+      data: {
+        ...ownerInvoice,
+        invoice_number: "TEST 4 02",
+        your_company: null,
+        your_name: null,
+        your_email: null,
+      },
+      error: null,
+    });
+
+    const res = await getRequest("inv-1");
+    const disposition = res.headers.get("content-disposition") ?? "";
+    expect(disposition).toContain('filename="jonnymarshall5_TEST_4_02_20260420.pdf"');
+  });
 });

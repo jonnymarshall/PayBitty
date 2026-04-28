@@ -6,6 +6,7 @@ export interface PdfFilenameInput {
   your_email: string | null;
   created_at: string;
   published_at?: string | null;
+  account_email?: string | null;
 }
 
 function sanitise(value: string): string {
@@ -15,16 +16,18 @@ function sanitise(value: string): string {
     .replace(/\s+/g, "_");
 }
 
+function emailPrefix(email: string | null | undefined): string | null {
+  if (!email || !email.includes("@")) return null;
+  const prefix = email.split("@")[0];
+  return prefix.trim() ? sanitise(prefix) : null;
+}
+
 function pickSender(input: PdfFilenameInput): string {
   const candidates = [input.your_company, input.your_name];
   for (const c of candidates) {
     if (c && c.trim()) return sanitise(c);
   }
-  if (input.your_email && input.your_email.includes("@")) {
-    const prefix = input.your_email.split("@")[0];
-    if (prefix.trim()) return sanitise(prefix);
-  }
-  return "invoice";
+  return emailPrefix(input.your_email) ?? emailPrefix(input.account_email) ?? "invoice";
 }
 
 function pickInvoiceName(input: PdfFilenameInput): string {
