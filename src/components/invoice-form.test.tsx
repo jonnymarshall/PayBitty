@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { InvoiceForm } from "./invoice-form";
+import { saveDraft } from "@/app/(dashboard)/invoices/actions";
 
 vi.mock("@/lib/supabase/client", () => ({
   createClient: vi.fn(() => ({
@@ -170,5 +171,57 @@ describe("InvoiceForm line item validation", () => {
     await user.type(priceInput, "9.999");
 
     expect(priceInput).not.toHaveValue("9.999");
+  });
+});
+
+describe("InvoiceForm line-item drag-to-reorder", () => {
+  const initialValues = {
+    line_items: [
+      { description: "Alpha", quantity: 1, unit_price: 10 },
+      { description: "Beta", quantity: 2, unit_price: 20 },
+      { description: "Gamma", quantity: 3, unit_price: 30 },
+    ],
+  };
+
+  function focusHandle(rowIndex: number) {
+    const handle = document.getElementById(`drag-handle-line-item-${rowIndex}`);
+    if (!handle) throw new Error(`drag handle for row ${rowIndex} not found`);
+    handle.focus();
+    return handle;
+  }
+
+  it("reorders line items via keyboard sensor (row 1 above row 0)", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm initialValues={initialValues} />);
+
+    focusHandle(1);
+    await user.keyboard("[Space]");
+    await user.keyboard("[ArrowUp]");
+    await user.keyboard("[Space]");
+
+    const descInputs = document.querySelectorAll<HTMLInputElement>(
+      "[id^='input-line-item-'][id$='-description']"
+    );
+    expect(descInputs[0].value).toBe("Beta");
+    expect(descInputs[1].value).toBe("Alpha");
+    expect(descInputs[2].value).toBe("Gamma");
+  });
+
+  it("persists reordered line items in the saveDraft payload", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveDraft).mockClear();
+    render(<InvoiceForm initialValues={initialValues} />);
+
+    focusHandle(2);
+    await user.keyboard("[Space]");
+    await user.keyboard("[ArrowUp]");
+    await user.keyboard("[ArrowUp]");
+    await user.keyboard("[Space]");
+
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    const payload = vi.mocked(saveDraft).mock.calls[0][0];
+    expect(payload.line_items?.map((i) => i.description)).toEqual(["Gamma", "Alpha", "Beta"]);
   });
 });

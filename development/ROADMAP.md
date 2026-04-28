@@ -734,22 +734,22 @@ New:
 
 ---
 
-### ⏳ v1.4.7 — Drag-to-reorder Line Items
+### ✅ v1.4.7 — Drag-to-reorder Line Items
 
 **Branch:** `v1.4.7/line-item-reorder`
 
 **Context:** Line items on the invoice form are currently fixed in the order they were added. Users want to reorder them without delete-and-re-add, especially when the invoice has many items or when the natural ordering changes mid-edit. Drag handles on the right of each row are a familiar pattern.
 
 **Scope**
-- [ ] Add a small drag handle (vertical-grip / six-dot icon) to the right of each line item row in `src/components/invoice-form.tsx`. Visible on hover (mobile: always visible).
-- [ ] Wire up drag-and-drop reordering of the line-items array using `@dnd-kit/core` + `@dnd-kit/sortable` — lightweight, accessible, framework-agnostic, well-suited to the modest payload of an invoice form. Avoid `react-beautiful-dnd` (deprecated, no React 19 support).
-- [ ] Keyboard a11y: arrow keys move focus, space picks up + space drops, escape cancels. `@dnd-kit` provides this out of the box.
-- [ ] Touch a11y: long-press to start drag on mobile.
-- [ ] Schema: line items already live as a JSONB array on `invoices`; ordering is positional within the array — no migration needed. Persist on form save like any other field.
+- [x] Add a small drag handle (vertical-grip / six-dot icon) to the right of each line item row in `src/components/invoice-form.tsx`. Visible on hover (mobile: always visible).
+- [x] Wire up drag-and-drop reordering of the line-items array using `@dnd-kit/core` + `@dnd-kit/sortable` — lightweight, accessible, framework-agnostic, well-suited to the modest payload of an invoice form. Avoid `react-beautiful-dnd` (deprecated, no React 19 support).
+- [x] Keyboard a11y: arrow keys move focus, space picks up + space drops, escape cancels. `@dnd-kit` provides this out of the box.
+- [x] Touch a11y: long-press to start drag on mobile.
+- [x] Schema: line items already live as a JSONB array on `invoices`; ordering is positional within the array — no migration needed. Persist on form save like any other field.
 
 **Tests**
-- [ ] Form test: reorder via drag (simulated via `@dnd-kit`'s testing utilities) → submit → assert the saved array reflects the new order.
-- [ ] Keyboard a11y test: focus the handle on row B, space, arrow up, space → row B is now above row A.
+- [x] Form test: reorder via drag (simulated via `@dnd-kit`'s testing utilities) → submit → assert the saved array reflects the new order.
+- [x] Keyboard a11y test: focus the handle on row B, space, arrow up, space → row B is now above row A.
 
 **Out of scope**
 - Reordering line items on the public invoice view (it's read-only).
@@ -903,10 +903,11 @@ This branch makes failed-email state a first-class signal in the dashboard.
 
 **Branch:** `v1.4.11/btc-address-hardening`
 
-**Context:** Two related gaps in BTC address validation discovered during v1.4 testing:
+**Context:** Three related gaps in BTC address validation and mempool URL handling discovered during v1.4 testing:
 
 1. **Deleted-invoice reuse.** An owner deletes an invoice that had an address. The uniqueness check (currently "no BTC address reuse across non-draft invoices") is implemented by counting rows in `invoices` — but deleted rows are hard-deleted, so the address becomes free again. A malicious or careless owner can re-publish the same address on a new invoice, which at best fragments payment detection and at worst lets a paid-for-real payment detect against a stale invoice.
 2. **Already-used addresses.** A freelancer pastes in a BTC address that already has on-chain history (e.g. reuse from a previous wallet, or a known-public address). mempool.space's balance + tx history gives this away. We should reject addresses with any prior receive history at publish time — it defends against both false-positive detections (prior txs matching the BTC amount) and against weak operational security (address reuse leaks counterparty privacy).
+3. **Mempool transaction URLs in emails are not network-aware.** The public invoice page and the payment-confirmed email both link to mempool.space for the detected tx, but the email hard-codes `https://mempool.space/tx/<txid>` while the UI uses a network-aware helper that emits `https://mempool.space/testnet4/tx/<txid>` on testnet. On testnet the email link 404s (or shows a stranger's mainnet tx of the same id, worse). The two surfaces must agree — both should call the same `mempoolTxUrl(txid)` helper that respects `NEXT_PUBLIC_BTC_NETWORK`.
 
 **Scope — deleted-invoice reuse**
 - [ ] Soft-delete existing invoices instead of hard-delete. Option A: add a `deleted` enum value to the `status` enum + a `deleted_at` timestamp column; `deleteInvoice` sets status and stamps the timestamp rather than calling `.delete()`. Option B: add a separate `deleted_at` column only, and filter every existing query by `where deleted_at is null`. Option A is cleaner; Option B is a smaller migration. Pick one in the branch; lean A.
@@ -920,13 +921,19 @@ This branch makes failed-email state a first-class signal in the dashboard.
 - [ ] Graceful failure: if mempool.space is unreachable, **allow** publish and log a warning. Do not block the owner on an external dependency. Add a test asserting this fallback.
 - [ ] Make the check conditional on `NEXT_PUBLIC_BTC_NETWORK` so testnet addresses are checked against the testnet4 endpoint.
 
+**Scope — network-aware mempool URLs everywhere**
+- [ ] Audit every reference to `mempool.space` in the codebase (`grep -ri "mempool.space" src/`). Every one must go through a single helper (e.g. `mempoolTxUrl(txid)` / `mempoolAddressUrl(addr)` in `src/lib/mempool.ts`) that prepends `/testnet4` when `NEXT_PUBLIC_BTC_NETWORK=testnet4`.
+- [ ] Replace the hard-coded `https://mempool.space/tx/<txid>` in the payment-confirmed email template (and any other email templates that link to mempool) with the helper. Confirm via grep that no other surface still hard-codes the URL.
+- [ ] Test: render the payment-confirmed email under both `NEXT_PUBLIC_BTC_NETWORK=mainnet` and `=testnet4` and assert the link host/path matches what the public invoice page renders for the same tx.
+
 **Tests**
 - [ ] Uniqueness check against soft-deleted rows — publish, delete, try to re-publish same address → reject.
 - [ ] Balance-check happy path — fresh address → accept.
 - [ ] Balance-check rejection — address with existing tx history → reject with the specific message.
 - [ ] Balance-check fallback — mempool down → accept with warning logged.
+- [ ] Mempool URL parity — assert the email link and the UI link for the same `(txid, network)` are byte-identical.
 
-**Done when:** An owner cannot re-use a BTC address from a deleted invoice, and cannot publish an invoice against any address with any on-chain history (on whichever network is configured).
+**Done when:** An owner cannot re-use a BTC address from a deleted invoice, cannot publish an invoice against any address with any on-chain history (on whichever network is configured), and every mempool.space URL in the product (UI, emails, PDFs) is generated through a single network-aware helper.
 
 ---
 
