@@ -717,27 +717,159 @@ New:
 
 **Branch:** `v1.4.6/invoice-ux-micro-fixes`
 
-**Context:** A bundle of five independent UX annoyances reported during v1.4.1 manual testing. None of them warrant a branch on their own; grouped here for a single clean PR.
+**Context:** A bundle of four independent UX annoyances reported during v1.4.1 manual testing. None of them warrant a branch on their own; grouped here for a single clean PR. (The original "Rename Mark as sent → Publish" item moved into **v1.4.8 — Publish vs Send-via-email split**, since the rename is now part of a larger state-machine change rather than a standalone label tweak.)
 
 **Scope**
-- [ ] **Rename "Mark as sent" → "Publish"** wherever it appears: invoice detail page action button, `/invoices` per-row dropdown, any toast / confirmation copy. The action also needs to *appear* in the per-row dropdown for `draft` rows (currently missing on the list view — only on the detail page), so drafts can be published from either surface. Underlying server action stays the same; UI label + surface only.
 - [ ] **Prefill and lock `your_email`** on `/invoices/new` and `/invoices/[id]/edit` — read `session.user.email` on the server render and inject it into the form as a read-only (disabled or `readonly`) field. Remove the field from `InvoiceFormSchema` validation on the client so users can't bypass. This collapses the "two emails" confusion (account email vs invoice sender email). Per-invoice override is an explicit future non-goal — call it out in a code comment; a future branch can add it back behind a toggle.
 - [ ] **Access codes: lowercase enforcement** — change the existing uppercase-on-input transform to lowercase-on-input. Typing `FOO12` becomes `foo12`. Easier to type on mobile, less ambiguous visually. Update `src/components/invoice-form.tsx` (or wherever the access code field lives) and the corresponding validation schema — no DB migration needed since existing codes are stored as-is; optionally write a one-off `UPDATE invoices SET access_code = lower(access_code)` if we want case-normalisation across existing rows.
 - [ ] **Feedback when archiving an unarchivable invoice** — today, attempting to archive an invoice that's already archived (or a status that doesn't support archive) silently fails. Add toast feedback with a specific reason, and/or disable the action in the dropdown with a tooltip.
 - [ ] **"Mark as overdue" missing from `/invoices` dropdown** for pending invoices — the detail page has the button, the list dropdown doesn't. Add it to the row-actions menu with the same conditional logic used on the detail page.
 
 **Tests**
-- [ ] Update dropdown-actions tests to assert "Publish" (renamed) and "Mark as overdue" appear with correct conditional visibility.
+- [ ] Update dropdown-actions tests to assert "Mark as overdue" appears with correct conditional visibility.
 - [ ] Update invoice-form tests to assert the email field is read-only and pre-filled from session.
 - [ ] Update access-code handling test to assert lowercase normalisation.
 
-**Done when:** All five fixes are live and covered by tests; the draft-publishing UX is consistent between list and detail views; users can't enter mixed-case access codes.
+**Done when:** All four fixes are live and covered by tests; users can't enter mixed-case access codes.
 
 ---
 
-### ⏳ v1.4.7 — Overdue Automation
+### ⏳ v1.4.7 — Drag-to-reorder Line Items
 
-**Branch:** `v1.4.7/overdue-automation`
+**Branch:** `v1.4.7/line-item-reorder`
+
+**Context:** Line items on the invoice form are currently fixed in the order they were added. Users want to reorder them without delete-and-re-add, especially when the invoice has many items or when the natural ordering changes mid-edit. Drag handles on the right of each row are a familiar pattern.
+
+**Scope**
+- [ ] Add a small drag handle (vertical-grip / six-dot icon) to the right of each line item row in `src/components/invoice-form.tsx`. Visible on hover (mobile: always visible).
+- [ ] Wire up drag-and-drop reordering of the line-items array using `@dnd-kit/core` + `@dnd-kit/sortable` — lightweight, accessible, framework-agnostic, well-suited to the modest payload of an invoice form. Avoid `react-beautiful-dnd` (deprecated, no React 19 support).
+- [ ] Keyboard a11y: arrow keys move focus, space picks up + space drops, escape cancels. `@dnd-kit` provides this out of the box.
+- [ ] Touch a11y: long-press to start drag on mobile.
+- [ ] Schema: line items already live as a JSONB array on `invoices`; ordering is positional within the array — no migration needed. Persist on form save like any other field.
+
+**Tests**
+- [ ] Form test: reorder via drag (simulated via `@dnd-kit`'s testing utilities) → submit → assert the saved array reflects the new order.
+- [ ] Keyboard a11y test: focus the handle on row B, space, arrow up, space → row B is now above row A.
+
+**Out of scope**
+- Reordering line items on the public invoice view (it's read-only).
+- Reordering line items on the rendered PDF (the PDF order matches what's in the DB; no UI for the payer).
+
+**Done when:** Owners can drag any line item to a new position on `/invoices/new` and `/invoices/[id]/edit`, the new order persists on save, and keyboard-only users can do the same.
+
+---
+
+### ⏳ v1.4.8 — Publish vs Send-via-email Split
+
+**Branch:** `v1.4.8/publish-send-split`
+
+**Context:** Today, "Publish" and "send the invoice email to the client" are coupled — clicking Publish (currently labelled "Mark as sent") creates the public URL *and* fires the published-invoice email in one server action. The owner has no way to publish privately and deliver the invoice through a different channel (in person, in-app messenger, postal). This branch decouples the two concerns:
+
+- **Publish** = put the invoice into its "final" state (status = `pending`), creating the public URL. No email side-effect.
+- **Send** = an explicit, separate step. Three sub-paths: "Send now via email" (fires the email + marks as sent), "Download and mark as sent" (downloads the PDF + marks as sent for manual delivery), or "Mark as sent" (just records the manual delivery).
+
+Once an email has been *attempted* against the invoice (success or failure), "Send via email" is permanently disabled — re-attempts would hit the same `client_email`, which is currently immutable post-publish. Failed-email surfacing is handled in **v1.4.9**.
+
+This branch also subsumes the **"Rename Mark as sent → Publish"** item that was previously slotted in v1.4.6, since the rename only makes sense in the context of the larger split.
+
+**State-machine model**
+"Sent" is **metadata on top of `pending`**, not a new status enum value. The payment lifecycle (`pending → payment_detected → paid`) is orthogonal to delivery — combining them would explode the status enum (`pending_unsent`, `pending_sent_email`, `pending_sent_manual`, …) and force every UI branch to switch on the cross product. Three new columns capture delivery state without touching the status enum.
+
+**Schema — new migration `supabase/migrations/00XX_publish_send_split.sql`**
+
+```sql
+alter table invoices add column sent_at timestamptz;
+alter table invoices add column send_method text check (send_method in ('email', 'manual'));
+alter table invoices add column email_attempted_at timestamptz;
+```
+
+- `sent_at` — non-null when the invoice has been "delivered" (manually OR via successful email).
+- `send_method` — non-null when `sent_at` is set; either `'email'` (successful email send) or `'manual'` (owner clicked Mark as sent / Download and mark as sent).
+- `email_attempted_at` — set the moment a Resend `safeSend` for `type=invoice_published` is fired, **regardless of outcome**. Used to gate the "Send via email" option.
+
+**Backfill**
+- All existing **non-draft** invoices: `sent_at = created_at, send_method = 'email', email_attempted_at = created_at`. Rationale: previously, publish auto-sent the email, so the implicit historical state is "delivered via email at create time". Per user instruction, retroactively apply this state.
+- Draft invoices: leave all three columns NULL.
+
+**Publish-action UI — split-button menu**
+The current "Publish" button (on the detail page and `/invoices` per-row dropdown for drafts) becomes a split-button. Clicking opens a menu with **four** options for a draft invoice:
+
+| Option | Side effects |
+|--------|--------------|
+| **Send now via email** | Publish + fire email. On success: `status='pending', sent_at=now(), send_method='email', email_attempted_at=now()`. On failure: `status='pending', email_attempted_at=now()` (sent_at + send_method stay NULL). |
+| **Download and mark as sent** | Publish + trigger PDF download + `status='pending', sent_at=now(), send_method='manual'`. No email. |
+| **Mark as sent** | Publish + `status='pending', sent_at=now(), send_method='manual'`. No email, no download. |
+| **Publish only (don't send yet)** | Publish, no delivery side-effect. `status='pending'`, all three new columns stay NULL. |
+
+For an **already-published, not-yet-sent** invoice (status `pending` via "Publish only"), the same menu appears with **3 options** (the bottom row removed). For a **manually-marked-sent** invoice, "Send now via email" remains available since `email_attempted_at` is NULL. For an **email-attempted** invoice (sent or failed), the "Send now via email" item is disabled with a tooltip ("An email has already been attempted for this invoice; multiple sends are not supported").
+
+**Server actions**
+Three new actions in `src/app/(dashboard)/invoices/actions.ts`:
+
+- `publishInvoice(id)` — publish only, no delivery side-effect (this *replaces* the existing `publishInvoice`, which currently also fires the email).
+- `publishAndSendEmail(id)` — publish + fire email. Returns the email-attempt outcome so the UI can show success/failure.
+- `publishAndMarkSent(id, { withDownload: boolean })` — publish + record manual delivery. When `withDownload=true`, the action also returns the PDF stream.
+
+The `email_events` table from v1.4.3 keeps recording every send attempt; the new `email_attempted_at` column is a denormalised flag for fast UI gating without an extra query.
+
+**Surfacing — detail page + dropdown + status badge**
+- Detail page: show "Sent via email on Apr 28" or "Marked as sent on Apr 28" as a small line under the status badge when `sent_at` is set.
+- `/invoices` per-row dropdown: if not yet sent, show the same split-menu shape; if sent, show the static line.
+- `/invoices` columns: small icon next to the status badge (envelope ✓ for email-sent, hand-mark ✓ for manual-sent, blank for not-sent), tooltip-driven to avoid visual noise.
+
+**Email template — out of scope for this branch**
+The existing `invoice-published.tsx` template is reused as-is when "Send now via email" fires. If the wording needs to be re-framed as a deliberate send rather than an auto-publish, do it in a separate small branch.
+
+**Tests**
+- [ ] Publish only — no `email_events` row written, all three new columns NULL, public URL works.
+- [ ] Publish + send email (success) — one `email_events` row (`status=sent`), `sent_at` set, `send_method='email'`, `email_attempted_at` set.
+- [ ] Publish + send email (failure) — one `email_events` row (`status=failed`), `sent_at` NULL, `send_method` NULL, `email_attempted_at` set.
+- [ ] Publish + mark as sent — no `email_events` row, `sent_at` set, `send_method='manual'`, `email_attempted_at` NULL.
+- [ ] Publish + download and mark as sent — same as above plus the response includes the PDF stream.
+- [ ] UI gate: after a failed email attempt, "Send via email" is disabled (assert disabled state in dropdown and detail page).
+- [ ] UI gate: after manual mark-as-sent (no email yet), "Send via email" is still enabled.
+- [ ] Backfill migration: applied to a fixture set, all non-drafts get the three columns populated correctly; drafts unchanged.
+
+**Out of scope**
+- Email template re-wording (separate small branch later).
+- Editing `client_email` post-publish (would change failed-email retry semantics; deferred — see v1.4.9 "out of scope" notes).
+- Re-enabling "Send via email" after a successful manual-then-email-failed sequence.
+
+**Done when:** Owners can publish privately, choose between four send paths, and the system distinguishes "delivered via email" from "delivered manually" cleanly. Repeated email sends are prevented; the existing `email_events` audit trail still records every attempt.
+
+---
+
+### ⏳ v1.4.9 — Failed Email Surfacing
+
+**Branch:** `v1.4.9/failed-email-surfacing`
+
+**Context:** v1.4.8 introduces the rule that "Send via email" is permanently disabled once an email attempt has been made — even if that attempt failed. This is correct behaviour (re-trying with the same `client_email` will keep failing, and editing `client_email` post-publish isn't supported yet), but it leaves a hole: today the owner has no clear visual signal that an email attempt failed. They have to dig into the v1.4.3 email-events activity card on the detail page to find out.
+
+This branch makes failed-email state a first-class signal in the dashboard.
+
+**Scope**
+- [ ] Detail page — when the most recent `email_events` row of `type=invoice_published` for this invoice is `status=failed`, show a small alert under the status badge: "Email delivery failed: <reason>". Add a "View activity" link that scrolls to the existing email-events card.
+- [ ] `/invoices` per-row visual cue — a small "!" badge on the status badge for any invoice with a failed last email-publish. Tooltip: "Email failed to send to this client".
+- [ ] Filter on `/invoices` — add an "Email failed" filter chip alongside the existing status filter.
+- [ ] Derive failed-email state live from `email_events` (no new column needed). Cache via the existing data-table query rather than an extra request.
+
+**Out of scope (deferred)**
+- **Editing `client_email` post-publish + retrying email**. Requires careful auditing of identity changes and re-enable semantics. Likely a v1.5 / v1.6 branch.
+- Bounce / complaint webhooks from Resend feeding back into `email_events.status` automatically. Currently we only know send-time `status=sent` vs `status=failed`. Resend's webhook for bounces (post-send-but-undeliverable) could update the same row to `status=bounced` — useful but separable.
+
+**Tests**
+- [ ] Detail-page test: invoice with last email-publish failed → alert renders with the reason.
+- [ ] Detail-page test: invoice with last email-publish sent → no alert.
+- [ ] Detail-page test: invoice with no email attempted (manual-only delivery, or publish-only) → no alert.
+- [ ] List-page test: filter "Email failed" hides invoices whose last attempt was successful and shows ones whose last attempt failed.
+
+**Done when:** A failed email is visible at a glance from both the dashboard list and the detail page, without the owner having to expand the email-events activity card.
+
+---
+
+### ⏳ v1.4.10 — Overdue Automation
+
+**Branch:** `v1.4.10/overdue-automation`
 
 **Context:** Today "overdue" is a fully manual status — the owner has to remember to click "Mark as overdue" after a due date passes, and the "Mark as overdue" button is offered indiscriminately even on invoices with no due date or with a due date in the future. This branch formalises the four cases into a tight state machine and automates the common one (case #1).
 
@@ -767,9 +899,9 @@ New:
 
 ---
 
-### ⏳ v1.4.8 — BTC Address Hardening
+### ⏳ v1.4.11 — BTC Address Hardening
 
-**Branch:** `v1.4.8/btc-address-hardening`
+**Branch:** `v1.4.11/btc-address-hardening`
 
 **Context:** Two related gaps in BTC address validation discovered during v1.4 testing:
 
@@ -798,9 +930,9 @@ New:
 
 ---
 
-### ⏳ v1.4.9 — Payment Detection Latency (no "Mark as Sent" path)
+### ⏳ v1.4.12 — Payment Detection Latency (no "Mark as Sent" path)
 
-**Branch:** `v1.4.9/payment-detection-latency`
+**Branch:** `v1.4.12/payment-detection-latency`
 
 **Context:** In v1.3.3 we shipped the "Mark as Payment Sent" dialog which front-loads mempool.space polling (5×2s + 5×3s + 3×5s + 2×10s = 15 polls / 60s). When the payer clicks that button, detection is fast — 2–10 seconds typical. But when the payer *doesn't* click it (just pays and closes the tab, or doesn't notice the button), detection falls back to the passive WebSocket watcher (A) and the background cron (C). The WebSocket is usually instant — but if it drops, the fallback polling starts at 10s and exponentially backs off. And if the tab closes before the WebSocket sees the tx, the payer has to wait for the cron — which is minute-granular at best, and the first cron-side poll is scheduled for +1m post-publish.
 
@@ -824,9 +956,9 @@ Real-world testing showed end-to-end latency in the "paid without clicking the b
 
 ---
 
-### ⏳ v1.4.10 — Fiat Payment Flow + Manual Confirmation + Mark-as-Unpaid
+### ⏳ v1.4.13 — Fiat Payment Flow + Manual Confirmation + Mark-as-Unpaid
 
-**Branch:** `v1.4.10/fiat-payment-and-manual-confirmation`
+**Branch:** `v1.4.13/fiat-payment-and-manual-confirmation`
 
 **Context:** Three tightly coupled features:
 
@@ -884,9 +1016,9 @@ alter table invoices add column paid_at timestamptz;
 
 ---
 
-### ⏳ v1.4.11 — Rename Paybitty → SatSend
+### ⏳ v1.4.14 — Rename Paybitty → SatSend
 
-**Branch:** `v1.4.11/rename-to-satsend`
+**Branch:** `v1.4.14/rename-to-satsend`
 
 **Context:** The product has been renamed from **Paybitty** to **SatSend**. This is the rename branch — purely mechanical, no behaviour changes. Lands as the final patch in the v1.4 train so that the v1.5 design-system overhaul starts from a clean-branded codebase.
 
