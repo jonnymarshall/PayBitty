@@ -1,32 +1,21 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { fetchPublicInvoice } from "@/lib/invoice-public";
 import { renderInvoicePdf } from "@/lib/invoices/invoice-pdf";
 import { buildPdfFilename } from "@/lib/invoices/pdf-filename";
 import { getAppUrl } from "@/lib/email/client";
-import type { Invoice } from "@/lib/invoice-public";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { data: invoice, error } = await supabase
-    .from("invoices")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .single();
-
-  if (error || !invoice) {
+  const invoice = await fetchPublicInvoice(id);
+  if (!invoice) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
 
-  const pdf = await renderInvoicePdf(invoice as Invoice, { appUrl: getAppUrl() });
-  const filename = buildPdfFilename({ ...(invoice as Invoice), account_email: user.email ?? null });
+  const pdf = await renderInvoicePdf(invoice, { appUrl: getAppUrl() });
+  const filename = buildPdfFilename(invoice);
   const asciiFilename = filename.replace(/[^\x20-\x7E]/g, "_");
   const encodedFilename = encodeURIComponent(filename);
 

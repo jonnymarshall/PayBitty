@@ -70,16 +70,25 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
             </h1>
             <InvoiceDates createdAt={invoice.created_at} dueDate={invoice.due_date} />
           </div>
-          {invoice.accepts_bitcoin && invoice.btc_address ? (
-            <PaymentWatcher
-              invoiceId={invoice.id}
-              btcAddress={invoice.btc_address}
-              status={status}
-              onStatusChange={setStatus}
-            />
-          ) : (
-            <InvoiceStatusBadge status={status} id="invoice-view--status" />
-          )}
+          <div className="flex items-start gap-3">
+            <a
+              id="invoice-view--download-pdf"
+              href={`/api/invoice/${invoice.id}/pdf`}
+              download
+            >
+              <Button variant="outline" size="sm">Download PDF</Button>
+            </a>
+            {invoice.accepts_bitcoin && invoice.btc_address ? (
+              <PaymentWatcher
+                invoiceId={invoice.id}
+                btcAddress={invoice.btc_address}
+                status={status}
+                onStatusChange={setStatus}
+              />
+            ) : (
+              <InvoiceStatusBadge status={status} id="invoice-view--status" />
+            )}
+          </div>
         </div>
 
         {/* Parties */}

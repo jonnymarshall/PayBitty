@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] - 2026-04-28
+
+### Added
+- **`Download PDF` action on the `/invoices` per-row dropdown** for non-draft rows. Reuses the existing `/api/invoices/[id]/pdf` endpoint, so users can download a PDF without navigating to the invoice detail page. Drafts stay excluded since they have no public URL/PDF.
+- **`Download PDF` button on the public invoice page (`/invoice/[id]`)** so payers can save a copy without owner credentials. Wired to a new public, unauthenticated route `/api/invoice/[id]/pdf` which calls `fetchPublicInvoice` (returns null for drafts) and renders the same PDF as the owner endpoint. Drafts continue to 404.
+- **PDF redesign with brand colours, dates, hyperlinks and BTC QR.**
+  - Coloured header band using the brand primary (`#DE3C4B`), pulled from the new `src/lib/brand-colors.ts` module that mirrors the canonical hex values declared in `globals.css`. When the brand redesign updates `globals.css`, both surfaces update in lockstep.
+  - **Date Created** and **Date Due** labels in the meta block; `Date Due` falls back to `"No due date"` when the invoice has none.
+  - **View and pay online** clickable link to the public invoice URL (`<appUrl>/invoice/<id>`), so payers can jump from a printed/emailed PDF straight to the live page.
+  - **BTC QR code** rendered into the Pay-with-Bitcoin block. The QR encodes a BIP-21 `bitcoin:<address>` URI **without** an amount (since the BTC amount depends on the spot price at payment time). The accompanying copy directs the payer to the public **View and pay online** page rather than to a third-party spot-price API — the public page already does the live conversion and shows an amount-encoded QR, so a separate calculation step is unnecessary.
+- `renderInvoicePdf` now takes an `{ appUrl }` option; the route passes `getAppUrl()` from the shared email client helper.
+
+### Changed
+- **PDF filename format** changed from `invoice-<invoiceName>.pdf` to `<sender>_<invoiceName>_<YYYYMMDD>.pdf`, where:
+  - `<sender>` = `your_company`, else `your_name`, else invoice `your_email` prefix, else the authenticated user's account email prefix, else literal `invoice`. Slashes/backslashes stripped, whitespace collapsed to `_`.
+  - `<invoiceName>` = `invoice_number` if set, else the short id `…xxxxxxxx`.
+  - `<YYYYMMDD>` = the invoice creation date in UTC.
+- New helper `src/lib/invoices/pdf-filename.ts` is the single source of truth (full unit-test coverage in `pdf-filename.test.ts`). The download route emits both an ASCII `filename=` and an RFC 5987 `filename*=UTF-8''…` so filenames containing the unicode ellipsis travel correctly through HTTP headers.
+
 ## [1.4.4] - 2026-04-27
 
 ### Added

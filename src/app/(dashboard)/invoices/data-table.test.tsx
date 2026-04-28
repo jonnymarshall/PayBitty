@@ -224,4 +224,24 @@ describe("InvoiceDataTable — per-row actions", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /^unarchive$/i }));
     await waitFor(() => expect(bulkUnarchive).toHaveBeenCalledWith(["inv-4"]));
   });
+
+  it("shows 'Download PDF' on non-draft rows wired to the PDF endpoint", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[1]); // inv-2 pending
+    const item = await screen.findByRole("menuitem", { name: /download pdf/i });
+    expect(item).toBeInTheDocument();
+    const link = item.closest("a") ?? item.querySelector("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("/api/invoices/inv-2/pdf");
+    expect(link!.hasAttribute("download")).toBe(true);
+  });
+
+  it("does not show 'Download PDF' on draft rows", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[0]); // inv-1 draft
+    expect(await screen.findByRole("menuitem", { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /download pdf/i })).not.toBeInTheDocument();
+  });
 });

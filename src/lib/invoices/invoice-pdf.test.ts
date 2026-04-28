@@ -36,8 +36,8 @@ const baseInvoice: Invoice = {
   updated_at: "2026-04-15T10:00:00Z",
 };
 
-async function textFromPdf(invoice: Invoice): Promise<string> {
-  const buf = await renderInvoicePdf(invoice);
+async function textFromPdf(invoice: Invoice, appUrl = "https://paybitty.test"): Promise<string> {
+  const buf = await renderInvoicePdf(invoice, { appUrl });
   const parser = new PDFParse({ data: new Uint8Array(buf) });
   const result = await parser.getText();
   await parser.destroy();
@@ -79,8 +79,39 @@ describe("renderInvoicePdf", () => {
     expect(text).not.toContain("bc1qexampleaddressforinvoice000000000000");
   });
 
-  it("includes the due date", async () => {
+  it("includes a 'Date Due' label and the formatted due date", async () => {
     const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("Date Due");
     expect(text).toContain("May 15, 2026");
+  });
+
+  it("shows 'No due date' when the invoice has no due_date", async () => {
+    const text = await textFromPdf({ ...baseInvoice, due_date: null });
+    expect(text).toContain("Date Due");
+    expect(text).toContain("No due date");
+  });
+
+  it("includes a 'Date Created' label and the formatted creation date", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("Date Created");
+    expect(text).toContain("April 15, 2026");
+  });
+
+  it("includes the public invoice URL built from the supplied appUrl, labelled 'View and pay online'", async () => {
+    const text = await textFromPdf(baseInvoice, "https://paybitty.app");
+    expect(text).toContain("View and pay online");
+    expect(text).toContain("https://paybitty.app/invoice/inv-id-1");
+  });
+
+  it("explains that the QR code does not encode an amount and points the payer to the public link", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).toContain("does not encode the amount");
+    expect(text).toContain("View and pay online");
+  });
+
+  it("does not link to any third-party spot-price API from the BTC block", async () => {
+    const text = await textFromPdf(baseInvoice);
+    expect(text).not.toContain("api.coinbase.com");
+    expect(text).not.toContain("api.coingecko.com");
   });
 });

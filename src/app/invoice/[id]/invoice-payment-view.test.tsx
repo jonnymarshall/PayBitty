@@ -42,6 +42,16 @@ const BASE_INVOICE: Invoice = {
   updated_at: "2026-04-15T12:00:00Z",
 };
 
+describe("InvoicePaymentView — download PDF", () => {
+  it("renders a 'Download PDF' link wired to /api/invoice/[id]/pdf with the download attribute", () => {
+    render(<InvoicePaymentView invoice={BASE_INVOICE} btcPrice={null} />);
+    const link = screen.getByRole("link", { name: /download pdf/i }) as HTMLAnchorElement;
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toBe("/api/invoice/inv-1/pdf");
+    expect(link.hasAttribute("download")).toBe(true);
+  });
+});
+
 describe("InvoicePaymentView — dates", () => {
   it("shows 'Date Sent:' label with formatted date", () => {
     render(<InvoicePaymentView invoice={BASE_INVOICE} btcPrice={null} />);
