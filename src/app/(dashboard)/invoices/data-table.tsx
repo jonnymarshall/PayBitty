@@ -41,7 +41,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { bulkArchive, bulkDelete, bulkMarkPaid, bulkUnarchive } from "./bulk-actions";
-import { publishInvoice, duplicateInvoice } from "./actions";
+import { publishInvoice, duplicateInvoice, markOverdue } from "./actions";
 import { buildColumns, InvoiceRow } from "./columns";
 import { useInvoiceRealtime } from "./use-invoice-realtime";
 
@@ -72,6 +72,7 @@ export function InvoiceDataTable({ data, userId }: Props) {
   const [showArchived, setShowArchived] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<string[] | null>(null);
+  const [archiveFeedback, setArchiveFeedback] = React.useState<string | null>(null);
 
   const copyPublicLink = React.useCallback((id: string) => {
     const url = `${window.location.origin}/invoice/${id}`;
@@ -96,6 +97,7 @@ export function InvoiceDataTable({ data, userId }: Props) {
       buildColumns({
         onMarkSent: (id) => runRowAction(() => publishInvoice(id)),
         onMarkPaid: (id) => runRowAction(() => bulkMarkPaid([id])),
+        onMarkOverdue: (id) => runRowAction(() => markOverdue(id)),
         onArchive: (id) => runRowAction(() => bulkArchive([id])),
         onUnarchive: (id) => runRowAction(() => bulkUnarchive([id])),
         onDelete: (id) => setDeleteTarget([id]),
@@ -158,7 +160,14 @@ export function InvoiceDataTable({ data, userId }: Props) {
   async function handleBulkArchive() {
     setPending(true);
     try {
-      await bulkArchive(selectedIds);
+      const { archived, skipped } = await bulkArchive(selectedIds);
+      if (skipped > 0) {
+        setArchiveFeedback(
+          `Archived ${archived} invoice${archived === 1 ? "" : "s"}. Skipped ${skipped} (drafts and already-archived invoices can't be archived).`
+        );
+      } else {
+        setArchiveFeedback(null);
+      }
       setRowSelection({});
       router.refresh();
     } finally {
@@ -268,6 +277,24 @@ export function InvoiceDataTable({ data, userId }: Props) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {archiveFeedback && (
+        <div
+          id="invoice-data-table--archive-feedback"
+          role="status"
+          className="mb-3 flex items-start justify-between gap-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
+        >
+          <span>{archiveFeedback}</span>
+          <button
+            type="button"
+            onClick={() => setArchiveFeedback(null)}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-hidden rounded-md border">

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-export async function bulkArchive(ids: string[]) {
+export async function bulkArchive(ids: string[]): Promise<{ archived: number; skipped: number }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -19,12 +19,13 @@ export async function bulkArchive(ids: string[]) {
     .neq("status", "archived");
 
   if (fetchError) throw new Error(fetchError.message);
-  if (!rows || rows.length === 0) {
+  const eligible = (rows ?? []) as { id: string; status: string }[];
+  if (eligible.length === 0) {
     revalidatePath("/invoices");
-    return;
+    return { archived: 0, skipped: ids.length };
   }
 
-  for (const row of rows as { id: string; status: string }[]) {
+  for (const row of eligible) {
     const { error } = await supabase
       .from("invoices")
       .update({ status: "archived", pre_archive_status: row.status })
@@ -34,6 +35,7 @@ export async function bulkArchive(ids: string[]) {
   }
 
   revalidatePath("/invoices");
+  return { archived: eligible.length, skipped: ids.length - eligible.length };
 }
 
 export async function bulkDelete(ids: string[]) {

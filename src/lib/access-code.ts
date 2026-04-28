@@ -3,7 +3,8 @@ export function isAccessCodeValid(
   provided: string | null | undefined
 ): boolean {
   if (!required) return true;
-  return provided === required;
+  if (!provided) return false;
+  return provided.toLowerCase() === required.toLowerCase();
 }
 
 export function accessCookieName(invoiceId: string): string {

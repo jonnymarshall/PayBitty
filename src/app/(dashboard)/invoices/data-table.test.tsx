@@ -4,7 +4,7 @@ import { InvoiceDataTable } from "./data-table";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("./bulk-actions", () => ({
-  bulkArchive: vi.fn().mockResolvedValue(undefined),
+  bulkArchive: vi.fn().mockResolvedValue({ archived: 1, skipped: 0 }),
   bulkDelete: vi.fn().mockResolvedValue(undefined),
   bulkMarkPaid: vi.fn().mockResolvedValue(undefined),
   bulkUnarchive: vi.fn().mockResolvedValue(undefined),
@@ -12,13 +12,14 @@ vi.mock("./bulk-actions", () => ({
 vi.mock("./actions", () => ({
   publishInvoice: vi.fn().mockResolvedValue(undefined),
   duplicateInvoice: vi.fn().mockResolvedValue(undefined),
+  markOverdue: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./use-invoice-realtime", () => ({
   useInvoiceRealtime: vi.fn(),
 }));
 
 import { bulkArchive, bulkDelete, bulkMarkPaid, bulkUnarchive } from "./bulk-actions";
-import { publishInvoice, duplicateInvoice } from "./actions";
+import { publishInvoice, duplicateInvoice, markOverdue } from "./actions";
 
 const MOCK_INVOICES = [
   { id: "inv-1", invoice_number: "INV-001", client_name: "Acme", total_fiat: 1000, currency: "USD", status: "draft", due_date: null, created_at: "2026-04-15T12:00:00Z" },
@@ -116,6 +117,30 @@ describe("InvoiceDataTable — archive toggle", () => {
     render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
     fireEvent.click(screen.getByRole("button", { name: /show archived/i }));
     expect(screen.getByText("Umbrella")).toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDataTable — archive feedback", () => {
+  it("shows a feedback message when some selected rows could not be archived", async () => {
+    vi.mocked(bulkArchive).mockResolvedValueOnce({ archived: 1, skipped: 1 });
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const rowCheckboxes = screen.getAllByRole("checkbox", { name: /select row/i });
+    fireEvent.click(rowCheckboxes[0]); // draft (will be skipped)
+    fireEvent.click(rowCheckboxes[1]); // pending (will be archived)
+    fireEvent.click(bulkActionsBtn());
+    fireEvent.click(screen.getByRole("menuitem", { name: /archive/i }));
+    expect(await screen.findByText(/archived 1.*skipped 1/i)).toBeInTheDocument();
+  });
+
+  it("does not show a feedback message when nothing was skipped", async () => {
+    vi.mocked(bulkArchive).mockResolvedValueOnce({ archived: 1, skipped: 0 });
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const rowCheckboxes = screen.getAllByRole("checkbox", { name: /select row/i });
+    fireEvent.click(rowCheckboxes[1]); // pending
+    fireEvent.click(bulkActionsBtn());
+    fireEvent.click(screen.getByRole("menuitem", { name: /archive/i }));
+    await waitFor(() => expect(bulkArchive).toHaveBeenCalled());
+    expect(screen.queryByText(/skipped/i)).not.toBeInTheDocument();
   });
 });
 
@@ -243,5 +268,30 @@ describe("InvoiceDataTable — per-row actions", () => {
     fireEvent.click(openMenuButtons[0]); // inv-1 draft
     expect(await screen.findByRole("menuitem", { name: /^edit$/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /download pdf/i })).not.toBeInTheDocument();
+  });
+
+  it("shows 'Mark as overdue' on pending rows and calls markOverdue when clicked", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[1]); // inv-2 pending
+    fireEvent.click(await screen.findByRole("menuitem", { name: /mark as overdue/i }));
+    await waitFor(() => expect(markOverdue).toHaveBeenCalledWith("inv-2"));
+  });
+
+  it("does not show 'Mark as overdue' on draft rows", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[0]); // inv-1 draft
+    expect(await screen.findByRole("menuitem", { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /mark as overdue/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show 'Mark as overdue' on paid rows", async () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    const openMenuButtons = screen.getAllByRole("button", { name: /open menu/i });
+    fireEvent.click(openMenuButtons[2]); // inv-3 paid
+    // ensure menu actually opened
+    expect(await screen.findByRole("menuitem", { name: /view public invoice/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /mark as overdue/i })).not.toBeInTheDocument();
   });
 });

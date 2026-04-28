@@ -18,4 +18,10 @@ describe("isAccessCodeValid", () => {
   it("returns false when code is required but nothing is provided", () => {
     expect(isAccessCodeValid("ABC123", null)).toBe(false);
   });
+
+  it("matches case-insensitively (legacy uppercase codes still accept lowercase input)", () => {
+    expect(isAccessCodeValid("ABC123", "abc123")).toBe(true);
+    expect(isAccessCodeValid("abc123", "ABC123")).toBe(true);
+    expect(isAccessCodeValid("AbC123", "aBc123")).toBe(true);
+  });
 });

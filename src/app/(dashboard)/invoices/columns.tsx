@@ -28,6 +28,7 @@ export interface InvoiceRow {
 export interface RowActions {
   onMarkSent: (id: string) => void;
   onMarkPaid: (id: string) => void;
+  onMarkOverdue: (id: string) => void;
   onArchive: (id: string) => void;
   onUnarchive: (id: string) => void;
   onDelete: (id: string) => void;
@@ -184,6 +185,11 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
               {invoice.status !== "paid" && !isDraft && (
                 <DropdownMenuItem onClick={() => actions.onMarkPaid(invoice.id)}>
                   Mark as paid
+                </DropdownMenuItem>
+              )}
+              {invoice.status === "pending" && (
+                <DropdownMenuItem onClick={() => actions.onMarkOverdue(invoice.id)}>
+                  Mark as overdue
                 </DropdownMenuItem>
               )}
               {isArchived && (

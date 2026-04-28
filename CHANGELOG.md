@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.6] - 2026-04-28
+
+### Changed
+- **`your_email` on the invoice form is now locked to the session user's email.** `New Invoice` and `Edit Invoice` pages read `session.user.email` server-side and pass it as `sessionEmail` to `InvoiceForm`; the input renders `readOnly` and the value is forced from the session, ignoring any stale `initialValues.your_email`. This collapses the "two emails" confusion (account email vs invoice sender email). Per-invoice override is an explicit non-goal for v1.4.6 and is documented in a code comment.
+- **Access codes are now lower-cased on input** (was uppercase). Typing `FoO12` becomes `foo12` — easier on mobile and less visually ambiguous. Placeholder updated to `e.g. mycode01`.
+- **Payer access-code verification is now case-insensitive.** `isAccessCodeValid` lowercases both sides before comparing so legacy uppercase codes continue to work for any-case payer input. No DB migration is required.
+- **Payer-facing access-code input now lowercases and clamps to 16 characters as the payer types**, matching the owner-side input. Visual feedback only — the verifier already accepts any case.
+
+### Added
+- **Bulk-archive feedback.** `bulkArchive` now returns `{ archived, skipped }`; the invoice data table surfaces a dismissable inline notice when any selected rows could not be archived (e.g. drafts or already-archived rows mixed into the selection), instead of silently dropping them.
+- **`Mark as overdue` action on the `/invoices` per-row dropdown** for `pending` rows, mirroring the button on the invoice detail page.
+
 ## [1.4.5] - 2026-04-28
 
 ### Added
