@@ -97,8 +97,9 @@ describe("renderInvoicePdf", () => {
     expect(text).toContain("April 15, 2026");
   });
 
-  it("includes the public invoice URL built from the supplied appUrl", async () => {
+  it("includes the public invoice URL built from the supplied appUrl, labelled 'View and pay online'", async () => {
     const text = await textFromPdf(baseInvoice, "https://paybitty.app");
+    expect(text).toContain("View and pay online");
     expect(text).toContain("https://paybitty.app/invoice/inv-id-1");
   });
 

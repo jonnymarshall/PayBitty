@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`Download PDF` action on the `/invoices` per-row dropdown** for non-draft rows. Reuses the existing `/api/invoices/[id]/pdf` endpoint, so users can download a PDF without navigating to the invoice detail page. Drafts stay excluded since they have no public URL/PDF.
+- **`Download PDF` button on the public invoice page (`/invoice/[id]`)** so payers can save a copy without owner credentials. Wired to a new public, unauthenticated route `/api/invoice/[id]/pdf` which calls `fetchPublicInvoice` (returns null for drafts) and renders the same PDF as the owner endpoint. Drafts continue to 404.
 - **PDF redesign with brand colours, dates, hyperlinks and BTC QR.**
   - Coloured header band using the brand primary (`#DE3C4B`), pulled from the new `src/lib/brand-colors.ts` module that mirrors the canonical hex values declared in `globals.css`. When the brand redesign updates `globals.css`, both surfaces update in lockstep.
   - **Date Created** and **Date Due** labels in the meta block; `Date Due` falls back to `"No due date"` when the invoice has none.
-  - **View online** clickable link to the public invoice URL (`<appUrl>/invoice/<id>`), so payers can jump from a printed/emailed PDF straight to the live page.
+  - **View and pay online** clickable link to the public invoice URL (`<appUrl>/invoice/<id>`), so payers can jump from a printed/emailed PDF straight to the live page.
   - **BTC QR code** rendered into the Pay-with-Bitcoin block. The QR encodes a BIP-21 `bitcoin:<address>` URI **without** an amount (since the BTC amount depends on the spot price at payment time). Accompanied by a short note and a clickable hyperlink to `https://api.coinbase.com/v2/prices/BTC-{currency}/spot` so the payer can convert at the moment they pay; the URL is built from the new `buildSpotPriceUrl` helper and adapts to the invoice currency.
 - `renderInvoicePdf` now takes an `{ appUrl }` option; the route passes `getAppUrl()` from the shared email client helper.
 

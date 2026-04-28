@@ -144,7 +144,7 @@ function InvoiceDocument({ invoice, publicUrl, spotUrl, qrDataUrl }: RenderProps
               </Text>
             </View>
             <View style={styles.metaCell}>
-              <Text style={styles.metaLabel}>View online</Text>
+              <Text style={styles.metaLabel}>View and pay online</Text>
               <Link src={publicUrl} style={styles.publicLink}>{publicUrl}</Link>
             </View>
           </View>
