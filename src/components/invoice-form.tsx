@@ -6,6 +6,25 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/date-picker";
 import { saveDraft, updateDraft, publishInvoice, InvoicePayload } from "@/app/(dashboard)/invoices/actions";
 import { computeInvoiceTotals, isValidEmail, isValidBtcAddress, parseServerError, LineItem } from "@/lib/invoices";
+import {
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { restrictToVerticalAxis, restrictToParentElement } from "@dnd-kit/modifiers";
 
 interface InvoiceFormProps {
   invoiceId?: string;
@@ -77,6 +96,27 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
     }))
   );
 
+  const [itemKeys, setItemKeys] = useState<string[]>(() =>
+    (initialValues?.line_items ?? DEFAULT_STATE.line_items).map(() => crypto.randomUUID())
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = itemKeys.indexOf(String(active.id));
+    const newIndex = itemKeys.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    setItemKeys((prev) => arrayMove(prev, oldIndex, newIndex));
+    setForm((prev) => ({ ...prev, line_items: arrayMove(prev.line_items, oldIndex, newIndex) }));
+    setRawAmounts((prev) => arrayMove(prev, oldIndex, newIndex));
+  }
+
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -120,11 +160,13 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
   function addItem() {
     set("line_items", [...form.line_items, { description: "", quantity: 1, unit_price: 0 }]);
     setRawAmounts((prev) => [...prev, { quantity: "1", unit_price: "" }]);
+    setItemKeys((prev) => [...prev, crypto.randomUUID()]);
   }
 
   function removeItem(i: number) {
     set("line_items", form.line_items.filter((_, idx) => idx !== i));
     setRawAmounts((prev) => prev.filter((_, idx) => idx !== i));
+    setItemKeys((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   const errorFieldIds: Record<string, string> = {
@@ -304,77 +346,49 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
       <section id="section-line-items" className="space-y-3">
         <h2 id="heading-line-items" className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Line Items</h2>
 
-        <div id="line-items-list" className="space-y-2">
-          {form.line_items.map((item, i) => (
-            <div key={i} id={`line-item-${i}`} className="flex items-end" style={{ gap: "0.75rem" }}>
-              {/* Description column: label + input in same div, label only on first row */}
-              <div id={`line-item-${i}-description`} className="flex-1 min-w-0 space-y-1.5">
-                {i === 0 && (
-                  <label id="label-line-item-description" htmlFor="input-line-item-0-description" className="text-sm font-medium">
-                    Description
-                  </label>
-                )}
-                <input
-                  id={`input-line-item-${i}-description`}
-                  type="text"
-                  value={item.description}
-                  onChange={(e) => updateItem(i, "description", e.target.value)}
-                  className={`w-full ${inputBase}`}
-                  placeholder="e.g. Design work"
-                />
-              </div>
-
-              {/* Qty column */}
-              <div id={`line-item-${i}-qty`} className="shrink-0 space-y-1.5" style={{ width: "5rem" }}>
-                {i === 0 && (
-                  <label id="label-line-item-qty" htmlFor="input-line-item-0-qty" className="text-sm font-medium">
-                    Qty
-                  </label>
-                )}
-                <input
-                  id={`input-line-item-${i}-qty`}
-                  type="text"
-                  inputMode="decimal"
-                  value={rawAmounts[i]?.quantity ?? ""}
-                  onChange={(e) => updateItem(i, "quantity", e.target.value)}
-                  className={`w-full ${inputBase}`}
-                />
-              </div>
-
-              {/* Unit price column */}
-              <div id={`line-item-${i}-unit-price`} className="shrink-0 space-y-1.5" style={{ width: "7rem" }}>
-                {i === 0 && (
-                  <label id="label-line-item-unit-price" htmlFor="input-line-item-0-unit-price" className="text-sm font-medium">
-                    Unit price
-                  </label>
-                )}
-                <input
-                  id={`input-line-item-${i}-unit-price`}
-                  type="text"
-                  inputMode="decimal"
-                  value={rawAmounts[i]?.unit_price ?? ""}
-                  onChange={(e) => updateItem(i, "unit_price", e.target.value)}
-                  className={`w-full ${inputBase}`}
-                  placeholder="0.00"
-                />
-              </div>
-
-              {/* Remove button column */}
-              <div id={`line-item-${i}-actions`} className="shrink-0 flex justify-center" style={{ width: "2rem" }}>
-                {form.line_items.length > 1 && (
-                  <button
-                    id={`btn-line-item-${i}-remove`}
-                    type="button"
-                    onClick={() => removeItem(i)}
-                    className="h-9 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors text-lg cursor-pointer"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+        <div id="line-items-header" className="flex items-end" style={{ gap: "0.75rem" }}>
+          <div className="flex-1 min-w-0">
+            <label id="label-line-item-description" htmlFor="input-line-item-0-description" className="text-sm font-medium">
+              Description
+            </label>
+          </div>
+          <div className="shrink-0" style={{ width: "5rem" }}>
+            <label id="label-line-item-qty" htmlFor="input-line-item-0-qty" className="text-sm font-medium">
+              Qty
+            </label>
+          </div>
+          <div className="shrink-0" style={{ width: "7rem" }}>
+            <label id="label-line-item-unit-price" htmlFor="input-line-item-0-unit-price" className="text-sm font-medium">
+              Unit price
+            </label>
+          </div>
+          <div className="shrink-0" style={{ width: "2rem" }} aria-hidden="true" />
+          <div className="shrink-0" style={{ width: "1.5rem" }} aria-hidden="true" />
         </div>
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={itemKeys} strategy={verticalListSortingStrategy}>
+            <div id="line-items-list" className="space-y-2">
+              {form.line_items.map((item, i) => (
+                <SortableLineItem
+                  key={itemKeys[i]}
+                  id={itemKeys[i]}
+                  index={i}
+                  item={item}
+                  rawAmount={rawAmounts[i]}
+                  canRemove={form.line_items.length > 1}
+                  onChangeField={updateItem}
+                  onRemove={removeItem}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         <button id="btn-add-line-item" type="button" onClick={addItem} className="text-sm text-primary hover:underline cursor-pointer">
           + Add line item
@@ -522,5 +536,115 @@ function Field({
       {children}
       {error && <p className="text-xs text-primary">{error}</p>}
     </div>
+  );
+}
+
+function SortableLineItem({
+  id,
+  index,
+  item,
+  rawAmount,
+  canRemove,
+  onChangeField,
+  onRemove,
+}: {
+  id: string;
+  index: number;
+  item: LineItem;
+  rawAmount: { quantity: string; unit_price: string } | undefined;
+  canRemove: boolean;
+  onChangeField: (i: number, field: keyof LineItem, raw: string) => void;
+  onRemove: (i: number) => void;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+    zIndex: isDragging ? 10 : undefined,
+    gap: "0.75rem",
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      id={`line-item-${index}`}
+      className="group flex items-center relative bg-background"
+      style={style}
+    >
+      <div id={`line-item-${index}-description`} className="flex-1 min-w-0">
+        <input
+          id={`input-line-item-${index}-description`}
+          type="text"
+          value={item.description}
+          onChange={(e) => onChangeField(index, "description", e.target.value)}
+          className={`w-full ${inputBase}`}
+          placeholder="e.g. Design work"
+        />
+      </div>
+
+      <div id={`line-item-${index}-qty`} className="shrink-0" style={{ width: "5rem" }}>
+        <input
+          id={`input-line-item-${index}-qty`}
+          type="text"
+          inputMode="decimal"
+          value={rawAmount?.quantity ?? ""}
+          onChange={(e) => onChangeField(index, "quantity", e.target.value)}
+          className={`w-full ${inputBase}`}
+        />
+      </div>
+
+      <div id={`line-item-${index}-unit-price`} className="shrink-0" style={{ width: "7rem" }}>
+        <input
+          id={`input-line-item-${index}-unit-price`}
+          type="text"
+          inputMode="decimal"
+          value={rawAmount?.unit_price ?? ""}
+          onChange={(e) => onChangeField(index, "unit_price", e.target.value)}
+          className={`w-full ${inputBase}`}
+          placeholder="0.00"
+        />
+      </div>
+
+      <div id={`line-item-${index}-actions`} className="shrink-0 flex items-center justify-center" style={{ width: "2rem" }}>
+        {canRemove && (
+          <button
+            id={`btn-line-item-${index}-remove`}
+            type="button"
+            onClick={() => onRemove(index)}
+            className="h-9 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-colors text-lg cursor-pointer"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      <div id={`line-item-${index}-drag`} className="shrink-0 flex items-center justify-center" style={{ width: "1.5rem" }}>
+        <button
+          id={`drag-handle-line-item-${index}`}
+          type="button"
+          aria-label={`Reorder line item ${index + 1}`}
+          className="h-9 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 transition-opacity"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+        >
+          <DragHandleDots />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DragHandleDots() {
+  return (
+    <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true">
+      <circle cx="3" cy="3" r="1.25" />
+      <circle cx="9" cy="3" r="1.25" />
+      <circle cx="3" cy="8" r="1.25" />
+      <circle cx="9" cy="8" r="1.25" />
+      <circle cx="3" cy="13" r="1.25" />
+      <circle cx="9" cy="13" r="1.25" />
+    </svg>
   );
 }

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.7] - 2026-04-28
+
+### Added
+- **Drag-to-reorder line items on the invoice form.** Each line-item row now has a six-dot drag handle to its right. Owners can mouse-drag, long-press on touch, or keyboard-reorder (Tab to focus the handle, Space to pick up, Arrow Up/Down to move, Space to drop, Escape to cancel) on `/invoices/new` and `/invoices/[id]/edit`. Order is positional within the existing JSONB `line_items` array — no migration. Built on `@dnd-kit/core` + `@dnd-kit/sortable` (chosen over the deprecated `react-beautiful-dnd`, which has no React 19 support). Drag movement is constrained to the vertical axis within the list. Handle is hidden until row hover on desktop and always visible on mobile.
+
 ## [1.4.6] - 2026-04-28
 
 ### Changed
