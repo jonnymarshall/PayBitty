@@ -1015,6 +1015,7 @@ All email-related events share **one icon family** (envelope) per the user's pre
 - [ ] Cache the mempool response briefly (or not at all — publish is not a hot path).
 - [ ] Graceful failure: if mempool.space is unreachable, **allow** publish and log a warning. Do not block the owner on an external dependency. Add a test asserting this fallback.
 - [ ] Make the check conditional on `NEXT_PUBLIC_BTC_NETWORK` so testnet addresses are checked against the testnet4 endpoint.
+- [ ] Update the README's "Bitcoin address policy" section (added during v1.4.10 planning) — flip the wording from "planned in v1.4.12" to a current statement of behaviour, including the mempool-down fallback rule.
 
 **Scope — network-aware mempool URLs everywhere**
 - [ ] Audit every reference to `mempool.space` in the codebase (`grep -ri "mempool.space" src/`). Every one must go through a single helper (e.g. `mempoolTxUrl(txid)` / `mempoolAddressUrl(addr)` in `src/lib/mempool.ts`) that prepends `/testnet4` when `NEXT_PUBLIC_BTC_NETWORK=testnet4`.
@@ -1239,6 +1240,71 @@ This branch closes the gap. After it lands, the **Email Activity** card distingu
 - [ ] Smoke test on preview: send a publish email to a known-bouncing address (e.g., `bounce@simulator.amazonses.com`) and confirm the row flips through `sent → bounced` within a few seconds, the activity card updates, and the `/invoices` indicator appears.
 
 **Done when:** an owner can distinguish a "sent" email (Resend accepted) from a "delivered" email (recipient confirmed receipt), and a bounced or spam-marked email is surfaced in both the Email Activity card and the `/invoices` indicator without manual investigation. The README note at `notes:` under "Publish vs Send-via-email split" can be removed.
+
+---
+
+### ⏳ v1.4.19 — Payment Amount Awareness (Under / Overpayment)
+
+**Branch:** `v1.4.19/payment-amount-awareness`
+
+**Context:** Today the on-chain detector flips an invoice to `paid` the moment it sees *any* tx at the address. It does not compare amount to invoice total. Two real failure modes follow: a payer sends less than billed (BTC price moved between invoicing and payment, or they fat-fingered) and the invoice is marked fully paid; or they overpay and the surplus is silently absorbed into the "paid" state. This branch closes both gaps for single-payment invoices, denominating in fiat with BTC as the rail and a 5% under/over tolerance.
+
+Decisions locked during v1.4.10 planning:
+- **Invoices remain fiat-denominated.** `total_fiat` + `currency` is the source of truth. BTC price at the moment of detection (mempool.space + Coinbase API) converts received sats to fiat for the comparison.
+- **5% tolerance, both sides.** `coverage = received_fiat / total_fiat`. `< 0.95` → underpaid; `0.95 ≤ x ≤ 1.05` → paid (clean); `> 1.05` → paid + overpaid flag. The 5% band is wide enough to absorb dust and small price wobble; tunable later.
+- **`underpaid` is its own status.** Mirrors the existing `paid` / `overdue` enum values. Owners can manually flip an underpaid invoice to paid (e.g., they took the rest in fiat off-platform) via the Mark As menu shipped in v1.4.10.
+- **`overpaid` is a flag, not a status.** The invoice is paid; it is also overpaid. UI surfaces the surplus as a small indicator alongside the status badge.
+- **Single-payment-only.** Multi-payment-toward-total and the multi-rail `invoice_payments` table are explicitly deferred; v1.4.12's fresh-address rule forecloses multi-payment by definition (any second tx lands on an address that now has prior on-chain history).
+
+**Schema — new migration `supabase/migrations/00XX_payment_amount_awareness.sql`**
+
+```sql
+alter type invoice_status add value if not exists 'underpaid';
+
+alter table invoices add column amount_received_sats bigint;
+alter table invoices add column btc_price_at_detection numeric;     -- USD per BTC at detection time
+alter table invoices add column amount_received_fiat numeric;        -- = amount_received_sats × btc_price_at_detection / 1e8
+alter table invoices add column overpaid boolean not null default false;
+```
+
+No backfill — existing invoices keep their current `paid` status with NULLs in the new columns. The new logic only applies to detections going forward.
+
+**Detection wiring**
+- [ ] On every detection callsite (currently `src/app/api/invoices/[id]/payment-status/route.ts` and `src/app/api/cron/payment-sweep/route.ts`), replace the unconditional `status='paid'` write with a `decidePaymentOutcome(receivedSats, totalFiat, btcPrice)` pure function that returns `{ status: 'paid' | 'underpaid', overpaid: boolean }`.
+- [ ] Add `src/lib/btc-price.ts` — fetches the current BTC/USD spot price from Coinbase (`GET https://api.coinbase.com/v2/exchange-rates?currency=BTC`). Used at detection time only. Cache for 60s in-memory to avoid hammering on cron sweeps.
+- [ ] If the price oracle fails, **do not flip status**. Schedule a retry on the next cron tick. Log a `[btc-price] oracle unavailable, deferring detection for invoice <id>`. Do not fall back to a stale price; an incorrect status is worse than a delayed one.
+- [ ] Persist `amount_received_sats`, `btc_price_at_detection`, `amount_received_fiat`, `overpaid` alongside the status flip in the same UPDATE.
+
+**UI**
+- [ ] Status badge: add an `underpaid` variant (amber/red, "Underpaid").
+- [ ] Detail page: when `overpaid=true` (regardless of `paid` / `underpaid` status), show a small "Overpaid by $X (Y%)" indicator next to the status badge. When `underpaid`, show "Received $X of $Y (Z%)" inline below the badge.
+- [ ] `/invoices` list: extend the status-column filters to include `underpaid`.
+- [ ] Mark As menu (v1.4.10): include `underpaid` in `UNPAID_STATES`-equivalent set so the owner can flip an underpaid invoice to paid (manual override) or back to pending. Decision: leaving `underpaid → unpaid` semantics the same as today (clears to pending; address is now tainted by the prior on-chain tx, so re-publish would be blocked by v1.4.12's freshness check — owner is expected to issue a new invoice with a fresh address).
+
+**Email templates**
+- [ ] `payment_detected` email: include the actual amount received and the invoice total. If underpaid, the subject line and body explicitly call it out ("Partial payment received: $X of $Y").
+- [ ] `payment_confirmed` email: same — include amount + overpaid surplus if applicable.
+
+**Tests**
+- [ ] `decidePaymentOutcome`: 90% coverage → `{ status: 'underpaid', overpaid: false }`.
+- [ ] `decidePaymentOutcome`: 100% coverage → `{ status: 'paid', overpaid: false }`.
+- [ ] `decidePaymentOutcome`: 95.0% (lower bound) → `paid`, no overpaid.
+- [ ] `decidePaymentOutcome`: 105.0% (upper bound) → `paid`, no overpaid.
+- [ ] `decidePaymentOutcome`: 110% coverage → `{ status: 'paid', overpaid: true }`.
+- [ ] Detection happy path: paid amount lands on `paid` status with the amount columns populated and `overpaid=false`.
+- [ ] Detection underpaid path: tx for 80% of total → status flips to `underpaid`; amount columns reflect what landed.
+- [ ] Detection overpaid path: tx for 120% → status `paid`, `overpaid=true`, amount columns populated.
+- [ ] Oracle-down path: Coinbase mock returns 5xx → detector defers (status stays in prior state, e.g. `pending` / `payment_detected`); next cron tick retries.
+- [ ] Mark As menu shows the right items on an `underpaid` invoice (Paid + Overdue, no Unpaid since it's already in an unpaid-equivalent state — TBD in implementation, depending on how the menu's `UNPAID_STATES` set evolves).
+
+**Out of scope (deferred to later branches)**
+- Multi-payment toward a single invoice total (would foreclose v1.4.12's freshness rule). Revisit if real users hit the use case.
+- `invoice_payments` table — the unifying multi-rail architecture sketched during v1.4.10 planning. Stays deferred until multi-payment or programmatic fiat reconciliation is needed.
+- Programmatic fiat reconciliation (auto-detecting Stripe / bank-transfer payments). For now, the owner manually flips underpaid → paid via the Mark As menu when fiat tops up the balance off-platform — covered by v1.4.10's existing menu.
+- Refund flows for overpaid invoices (out-of-band; the surface only flags it).
+- Multi-currency support beyond the per-invoice `currency` field (v2.4 territory).
+
+**Done when:** A BTC payment of any size resolves to one of `paid` / `paid+overpaid` / `underpaid` based on a 5% tolerance band against the invoice's fiat total at detection time; the actual amount received and the BTC price used for conversion are persisted on the invoice row; the UI surfaces both states clearly; the price-oracle failure mode does not corrupt status.
 
 ---
 
