@@ -228,16 +228,17 @@ The menu shows only actions that are still useful for the invoice's current stat
 |---|---|---|
 | Draft | **Publish** | Send via email · Download and mark as sent · Mark as sent · Publish only |
 | Published-only (`sent_at` NULL) | **Send** | Send via email · Download and mark as sent · Mark as sent |
-| Manually-marked-sent (`sent_at` set, `email_attempted_at` NULL) | **Send** | Send via email *(only)* |
+| Manually-marked-sent (`sent_at` set, `email_attempted_at` NULL) | **Send** | Send via email *(only — disabled with tooltip if no `client_email`)* |
 | Email attempted but failed (`email_attempted_at` set, `sent_at` NULL) | **Send** | Send via email *(disabled)* · Download and mark as sent · Mark as sent |
-| Successfully delivered via email | (hidden) | — |
-| Manually sent + email attempted | (hidden) | — |
+| Successfully delivered via email (`sent_at` + `email_attempted_at` both set) | (hidden) | — |
+| Manually sent + email attempted (both set) | (hidden) | — |
 | Archived | (hidden) | — |
 
 Notes:
 - Once `email_attempted_at` is set, "Send via email" is permanently disabled with a tooltip — re-attempts would hit the same `client_email`, which is currently immutable post-publish.
 - After a manual mark-as-sent the manual options ("Mark as sent", "Download and mark as sent") drop out because they are no-ops; the existing **Download PDF** button on the detail page / row dropdown handles that affordance.
-- The `Send` trigger disappears entirely once *every* path is a no-op (delivered via email, OR marked-sent + email-attempted).
+- The `Send` trigger disappears entirely once *every* path is a no-op (both `sent_at` *and* `email_attempted_at` set).
+- "Sent" in the **Email Activity** card means **Resend accepted the request**, not that the recipient inbox confirmed receipt. Bounces / spam-blocks that occur post-acceptance are not currently surfaced — that needs a Resend webhook subscription (out of scope for v1.4.8 / v1.4.9).
 
 Three server actions back the menu (`src/app/(dashboard)/invoices/actions.ts`):
 

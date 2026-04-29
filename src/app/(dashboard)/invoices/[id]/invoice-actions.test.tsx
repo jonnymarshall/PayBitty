@@ -144,6 +144,41 @@ describe("InvoiceActions — v1.4.8 send-via-email gating", () => {
     expect(screen.queryByRole("button", { name: /^send$/i })).not.toBeInTheDocument();
   });
 
+  it("keeps the Send menu visible after manual mark-as-sent EVEN when client_email is empty (Send via email is disabled with tooltip)", () => {
+    const invoice = {
+      id: "inv-no-email",
+      status: "pending",
+      client_email: "",
+      email_attempted_at: null,
+      sent_at: "2026-04-29T10:00:00Z",
+      send_method: "manual" as const,
+    };
+    render(<InvoiceActions invoice={invoice} />);
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    const item = screen.getByRole("menuitem", { name: /send now via email/i });
+    expect(item).toHaveAttribute("data-disabled");
+  });
+
+  it("shows a failed-email alert banner when publishAndSendEmail returns emailStatus='failed'", async () => {
+    vi.mocked(publishAndSendEmail).mockResolvedValueOnce({ emailStatus: "failed" });
+    const invoice = { id: "inv-fail", status: "draft", client_email: "ada@example.com" };
+    render(<InvoiceActions invoice={invoice} />);
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /send now via email/i }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/email delivery failed/i);
+  });
+
+  it("shows a queued-for-delivery notice when publishAndSendEmail returns emailStatus='sent'", async () => {
+    vi.mocked(publishAndSendEmail).mockResolvedValueOnce({ emailStatus: "sent" });
+    const invoice = { id: "inv-ok", status: "draft", client_email: "ada@example.com" };
+    render(<InvoiceActions invoice={invoice} />);
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /send now via email/i }));
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toMatch(/queued for delivery to ada@example\.com/i);
+  });
+
   it("hides the Send menu once the invoice has been manually marked sent AND an email has been attempted (failed)", () => {
     const invoice = {
       id: "inv-manual-then-failed",

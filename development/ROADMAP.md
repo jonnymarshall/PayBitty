@@ -809,11 +809,13 @@ For an **already-published, not-yet-sent** invoice (status `pending` via "Publis
 |---|---|---|
 | Draft | **Publish** | Send via email · Download and mark as sent · Mark as sent · Publish only |
 | Published-only (`sent_at` NULL) | **Send** | Send via email · Download and mark as sent · Mark as sent |
-| Manually-marked-sent (`sent_at` set, `email_attempted_at` NULL) | **Send** | Send via email *(only)* |
+| Manually-marked-sent (`sent_at` set, `email_attempted_at` NULL) | **Send** | Send via email *(only — disabled with tooltip if no `client_email`)* |
 | Email attempted but failed (`email_attempted_at` set, `sent_at` NULL) | **Send** | Send via email *(disabled)* · Download and mark as sent · Mark as sent |
-| Successfully delivered via email | (hidden) | — |
-| Manually sent + email attempted | (hidden) | — |
+| Successfully delivered via email (`sent_at` + `email_attempted_at` both set) | (hidden) | — |
+| Manually sent + email attempted (both set) | (hidden) | — |
 | Archived | (hidden) | — |
+
+> **Email delivery confirmation is "Resend-accepted", not "inbox-confirmed".** When `publishAndSendEmail` records `email_events.status = 'sent'`, it means the Resend API accepted the request — the email may still bounce later (invalid recipient, spam-block, etc.) and we won't know. True delivery confirmation requires a Resend webhook subscription that updates `email_events.status` post-acceptance; that's tracked as out-of-scope for v1.4.8 and v1.4.9 and will land in a later branch.
 
 **Server actions**
 Three new actions in `src/app/(dashboard)/invoices/actions.ts`:

@@ -32,23 +32,22 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const isDraft = invoice.status === "draft";
   const isArchived = invoice.status === "archived";
   const isPaid = invoice.status === "paid";
   const canMarkPaid = !isDraft && !isArchived && !isPaid;
-  // The menu has at least one useful action when:
-  //   - it's a draft (Publish-only is always relevant), OR
-  //   - the invoice hasn't been marked sent (manual options are usable), OR
-  //   - the invoice hasn't yet had an email attempt (Send via email is reachable).
-  // Once both sent_at and email_attempted_at are set, every action is a no-op — hide the trigger.
-  const emailReachable = !invoice.email_attempted_at && !!invoice.client_email;
-  const hasUsefulPublishAction = isDraft || !invoice.sent_at || emailReachable;
-  const canShowPublishMenu = !isArchived && hasUsefulPublishAction;
+  // Hide the publish/send trigger only when truly nothing remains to do — i.e., the invoice
+  // has both been marked sent AND had an email attempt. Until then keep the menu reachable
+  // (even with no client_email — the "Send via email" item explains via tooltip).
+  const allSendActionsDone = !!invoice.sent_at && !!invoice.email_attempted_at;
+  const canShowPublishMenu = isDraft || (!isArchived && !allSendActionsDone);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await fn();
       router.refresh();
@@ -82,7 +81,24 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
 
   return (
     <div id="invoice-actions" className="space-y-3 pb-8">
-      {error && <p id="invoice-actions--error" className="text-sm text-primary">{error}</p>}
+      {error && (
+        <div
+          id="invoice-actions--error"
+          role="alert"
+          className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400"
+        >
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div
+          id="invoice-actions--notice"
+          role="status"
+          className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400"
+        >
+          {notice}
+        </div>
+      )}
       {deliveryLine && (
         <p id="invoice-actions--delivery-status" className="text-sm text-muted-foreground">
           {deliveryLine}
@@ -119,8 +135,24 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
             onSendEmail={(id) =>
               run(async () => {
                 const result = await publishAndSendEmail(id);
-                if (result.emailStatus === "failed") {
-                  setError("Email delivery failed. The invoice has been published; visit the activity log for details.");
+                if (result.emailStatus === "sent") {
+                  setNotice(
+                    invoice.client_email
+                      ? `Email queued for delivery to ${invoice.client_email}. See the Email Activity log for the delivery status.`
+                      : "Email queued for delivery. See the Email Activity log for the delivery status."
+                  );
+                } else if (result.emailStatus === "failed") {
+                  setError(
+                    "Email delivery failed at the provider. The invoice has been published; see the Email Activity log for the error message."
+                  );
+                } else if (result.emailStatus === "skipped_no_api_key") {
+                  setError(
+                    "Email skipped: the email provider isn't configured (RESEND_API_KEY is missing). The invoice has been published — use 'Mark as sent' to record manual delivery."
+                  );
+                } else if (result.emailStatus === "no_recipient") {
+                  setError(
+                    "Email skipped: no client email is set on this invoice. The invoice has been published — use 'Mark as sent' to record manual delivery."
+                  );
                 }
               })
             }

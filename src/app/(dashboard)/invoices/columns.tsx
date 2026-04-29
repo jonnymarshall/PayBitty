@@ -184,11 +184,11 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
         const invoice = row.original;
         const isDraft = invoice.status === "draft";
         const isArchived = invoice.status === "archived";
-        // Manual mark-as-sent leaves email_attempted_at NULL, so the Send menu must remain reachable.
-        // Hide only when every action is a no-op: invoice is marked sent AND an email has been attempted.
-        const emailReachable = !invoice.email_attempted_at && !!invoice.client_email;
-        const hasUsefulPublishAction = isDraft || !invoice.sent_at || emailReachable;
-        const showPublishMenu = !isArchived && hasUsefulPublishAction;
+        // Hide the publish/send menu only when truly nothing remains to do — i.e., the invoice
+        // has both been marked sent AND had an email attempt. Manual-mark-sent (without email)
+        // leaves email_attempted_at NULL, so "Send now via email" must still be reachable.
+        const allSendActionsDone = !!invoice.sent_at && !!invoice.email_attempted_at;
+        const showPublishMenu = isDraft || (!isArchived && !allSendActionsDone);
         const emailDisabled = !!invoice.email_attempted_at || !invoice.client_email;
         const emailDisabledReason = invoice.email_attempted_at
           ? "An email has already been attempted for this invoice; multiple sends are not supported."
