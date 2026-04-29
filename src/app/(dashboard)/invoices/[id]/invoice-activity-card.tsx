@@ -58,7 +58,7 @@ function manualIcon(type: InvoiceEventType) {
     case "marked_as_paid":
       return <CheckCircle data-icon="check-circle" className={`${ICON_CLASS} text-green-600 dark:text-green-400`} />;
     case "marked_as_overdue":
-      return <Clock data-icon="clock" className={`${ICON_CLASS} text-muted-foreground`} />;
+      return <Clock data-icon="clock" className={`${ICON_CLASS} text-red-600 dark:text-red-400`} />;
     case "marked_as_unpaid":
       return <RotateCcw data-icon="rotate-ccw" className={`${ICON_CLASS} text-muted-foreground`} />;
   }
