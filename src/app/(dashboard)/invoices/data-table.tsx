@@ -41,7 +41,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { bulkArchive, bulkDelete, bulkMarkPaid, bulkUnarchive } from "./bulk-actions";
-import { publishInvoice, duplicateInvoice, markOverdue } from "./actions";
+import {
+  publishInvoice,
+  publishAndSendEmail,
+  publishAndMarkSent,
+  duplicateInvoice,
+  markOverdue,
+} from "./actions";
 import { buildColumns, InvoiceRow } from "./columns";
 import { useInvoiceRealtime } from "./use-invoice-realtime";
 
@@ -95,7 +101,16 @@ export function InvoiceDataTable({ data, userId }: Props) {
   const columns = React.useMemo(
     () =>
       buildColumns({
-        onMarkSent: (id) => runRowAction(() => publishInvoice(id)),
+        onPublishOnly: (id) => runRowAction(() => publishInvoice(id)),
+        onSendEmail: (id) => runRowAction(() => publishAndSendEmail(id)),
+        onMarkSent: (id) => runRowAction(() => publishAndMarkSent(id)),
+        onDownloadAndMarkSent: (id) =>
+          runRowAction(async () => {
+            const result = await publishAndMarkSent(id, { withDownload: true });
+            if (result?.downloadUrl && typeof window !== "undefined") {
+              window.location.href = result.downloadUrl;
+            }
+          }),
         onMarkPaid: (id) => runRowAction(() => bulkMarkPaid([id])),
         onMarkOverdue: (id) => runRowAction(() => markOverdue(id)),
         onArchive: (id) => runRowAction(() => bulkArchive([id])),

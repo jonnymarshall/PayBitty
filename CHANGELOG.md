@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] - 2026-04-29
+
+### Added
+- **Publish vs Send-via-email split.** Publishing an invoice (creating its public URL) is now decoupled from sending it via email. Owners get a split-button menu with four options for drafts: Send now via email, Download and mark as sent, Mark as sent, or Publish only. New `sent_at`, `send_method`, and `email_attempted_at` columns on `invoices` track delivery state without polluting the payment-status enum.
+- **Send menu is state-aware.** It only shows actions still useful for the invoice's current state — once an invoice has been delivered via email *or* both manually marked sent and email-attempted, the trigger is hidden entirely. After a manual mark-as-sent, only "Send now via email" remains in the menu (the manual options are no-ops once `sent_at` is set; the existing "Download PDF" affordance covers that path). "Send via email" is permanently disabled once an email attempt has been made (success or failure) — re-attempts are out of scope until `client_email` editing is supported.
+- **Delivery indicators.** The detail page shows a "Sent via email on …" or "Marked as sent on …" line under the status badge; the `/invoices` Status column gets a small mail/hand icon next to the badge for at-a-glance method recognition.
+
 ## [1.4.7] - 2026-04-28
 
 ### Added

@@ -4,13 +4,21 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/email/send", () => ({
-  sendInvoicePublishedEmail: vi.fn().mockResolvedValue(undefined),
+  sendInvoicePublishedEmail: vi.fn().mockResolvedValue({ status: "sent" }),
 }));
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { sendInvoicePublishedEmail } from "@/lib/email/send";
-import { saveDraft, publishInvoice, deleteDraft, markOverdue, duplicateInvoice } from "./actions";
+import {
+  saveDraft,
+  publishInvoice,
+  publishAndSendEmail,
+  publishAndMarkSent,
+  deleteDraft,
+  markOverdue,
+  duplicateInvoice,
+} from "./actions";
 
 const VALID_DRAFT = {
   client_name: "Acme Corp",
@@ -91,52 +99,111 @@ describe("saveDraft", () => {
   });
 });
 
-describe("publishInvoice", () => {
-  it("sets status to pending and attaches an 8-char access code", async () => {
-    const { updateEq } = makeSupabase({
-      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" },
-    });
+const PUBLISHABLE_INVOICE = {
+  id: "inv-1",
+  status: "draft",
+  user_id: "user-1",
+  accepts_bitcoin: true,
+  btc_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+  client_email: "client@example.com",
+  client_name: "Ada",
+  your_name: "Charles",
+  your_email: "charles@example.com",
+  your_company: null,
+  invoice_number: "INV-77",
+  total_fiat: 500,
+  currency: "USD",
+  access_code: "SECRET42",
+  due_date: "2026-07-10",
+};
+
+describe("publishInvoice (publish-only, no email)", () => {
+  it("sets status=pending without firing the invoice_published email", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
     await publishInvoice("inv-1");
-    const [updatePayload] = updateEq.mock.calls[0];
-    expect(updatePayload).toBe("id");
+
+    expect(sendInvoicePublishedEmail).not.toHaveBeenCalled();
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+  });
+
+  it("does not set sent_at, send_method, or email_attempted_at on the update payload", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    await publishInvoice("inv-1");
+
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("sent_at");
+    expect(payload).not.toHaveProperty("send_method");
+    expect(payload).not.toHaveProperty("email_attempted_at");
   });
 
   it("throws if the BTC address is already used on an active invoice", async () => {
     makeSupabase({
-      fetchData: { id: "inv-1", status: "draft", user_id: "user-1", btc_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", accepts_bitcoin: true },
+      fetchData: PUBLISHABLE_INVOICE,
       btcConflict: { id: "inv-other", status: "pending" },
     });
     await expect(publishInvoice("inv-1")).rejects.toThrow(/btc_address: This bitcoin address/i);
   });
 
-  it("sends the invoice-published email to the client with the invoice details", async () => {
-    makeSupabase({
-      fetchData: {
-        id: "inv-7",
-        status: "draft",
-        user_id: "user-1",
-        accepts_bitcoin: false,
-        btc_address: null,
-        client_email: "client@example.com",
-        client_name: "Ada",
-        your_name: "Charles",
-        your_email: "charles@example.com",
-        your_company: null,
-        invoice_number: "INV-77",
-        total_fiat: 500,
-        currency: "USD",
-        access_code: "SECRET42",
-        due_date: "2026-07-10",
-      },
-    });
-    await publishInvoice("inv-7");
+  it("initialises background-polling columns (next_check_at = +1m, stage_attempt = 0, mempool_seen_at = null) alongside the status change", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    const before = Date.now();
+    await publishInvoice("inv-1");
+    const after = Date.now();
+
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.stage_attempt).toBe(0);
+    expect(payload.mempool_seen_at).toBeNull();
+
+    const nextCheck = new Date(payload.next_check_at as string).getTime();
+    expect(nextCheck).toBeGreaterThanOrEqual(before + 60_000 - 5_000);
+    expect(nextCheck).toBeLessThanOrEqual(after + 60_000 + 5_000);
+  });
+});
+
+describe("publishAndSendEmail", () => {
+  it("on email success: status=pending, sent_at set, send_method='email', email_attempted_at set", async () => {
+    vi.mocked(sendInvoicePublishedEmail).mockResolvedValueOnce({ status: "sent" });
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    const before = Date.now();
+    await publishAndSendEmail("inv-1");
+    const after = Date.now();
+
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+    expect(payload.send_method).toBe("email");
+
+    const sentAt = new Date(payload.sent_at as string).getTime();
+    expect(sentAt).toBeGreaterThanOrEqual(before - 1_000);
+    expect(sentAt).toBeLessThanOrEqual(after + 1_000);
+
+    const attemptAt = new Date(payload.email_attempted_at as string).getTime();
+    expect(attemptAt).toBeGreaterThanOrEqual(before - 1_000);
+    expect(attemptAt).toBeLessThanOrEqual(after + 1_000);
+  });
+
+  it("on email failure: status=pending, email_attempted_at set, sent_at and send_method NULL", async () => {
+    vi.mocked(sendInvoicePublishedEmail).mockResolvedValueOnce({ status: "failed" });
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    await publishAndSendEmail("inv-1");
+
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+    expect(payload.sent_at).toBeNull();
+    expect(payload.send_method).toBeNull();
+    expect(payload.email_attempted_at).toBeTruthy();
+  });
+
+  it("calls sendInvoicePublishedEmail with the invoice details", async () => {
+    makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    await publishAndSendEmail("inv-1");
     expect(sendInvoicePublishedEmail).toHaveBeenCalledTimes(1);
     expect(sendInvoicePublishedEmail).toHaveBeenCalledWith(expect.objectContaining({
       to: "client@example.com",
       userId: "user-1",
       senderName: "Charles",
       clientName: "Ada",
-      invoiceId: "inv-7",
+      invoiceId: "inv-1",
       invoiceNumber: "INV-77",
       totalFiat: 500,
       currency: "USD",
@@ -145,54 +212,59 @@ describe("publishInvoice", () => {
     }));
   });
 
-  it("initialises background-polling columns (next_check_at = +1m, stage_attempt = 0, mempool_seen_at = null) alongside the status change", async () => {
-    const { updateChain } = makeSupabase({
-      fetchData: {
-        id: "inv-sched",
-        status: "draft",
-        user_id: "user-1",
-        accepts_bitcoin: true,
-        btc_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-        client_email: "",
-        invoice_number: null,
-        total_fiat: 100,
-        currency: "USD",
-      },
+  it("throws if the BTC address is already used on an active invoice", async () => {
+    makeSupabase({
+      fetchData: PUBLISHABLE_INVOICE,
+      btcConflict: { id: "inv-other", status: "pending" },
     });
-    const before = Date.now();
-    await publishInvoice("inv-sched");
-    const after = Date.now();
-
-    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.status).toBe("pending");
-    expect(payload.stage_attempt).toBe(0);
-    expect(payload.mempool_seen_at).toBeNull();
-
-    const nextCheck = new Date(payload.next_check_at as string).getTime();
-    expect(nextCheck).toBeGreaterThanOrEqual(before + 60_000 - 5_000);
-    expect(nextCheck).toBeLessThanOrEqual(after + 60_000 + 5_000);
+    await expect(publishAndSendEmail("inv-1")).rejects.toThrow(/btc_address: This bitcoin address/i);
   });
 
-  it("does not send an email when client_email is empty", async () => {
-    makeSupabase({
-      fetchData: {
-        id: "inv-8",
-        status: "draft",
-        user_id: "user-1",
-        accepts_bitcoin: false,
-        btc_address: null,
-        client_email: "",
-        client_name: "",
-        your_name: "Charles",
-        invoice_number: null,
-        total_fiat: 100,
-        currency: "USD",
-        access_code: null,
-        due_date: null,
-      },
-    });
-    await publishInvoice("inv-8");
+  it("returns the email outcome to the caller", async () => {
+    vi.mocked(sendInvoicePublishedEmail).mockResolvedValueOnce({ status: "failed" });
+    makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    const result = await publishAndSendEmail("inv-1");
+    expect(result).toEqual({ emailStatus: "failed" });
+  });
+});
+
+describe("publishAndMarkSent", () => {
+  it("status=pending, sent_at set, send_method='manual', email_attempted_at NULL, no email", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    const before = Date.now();
+    await publishAndMarkSent("inv-1");
+    const after = Date.now();
+
     expect(sendInvoicePublishedEmail).not.toHaveBeenCalled();
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+    expect(payload.send_method).toBe("manual");
+    // email_attempted_at must NOT be touched — preserves any prior failed-attempt timestamp
+    expect(payload).not.toHaveProperty("email_attempted_at");
+
+    const sentAt = new Date(payload.sent_at as string).getTime();
+    expect(sentAt).toBeGreaterThanOrEqual(before - 1_000);
+    expect(sentAt).toBeLessThanOrEqual(after + 1_000);
+  });
+
+  it("with { withDownload: true }, response includes the PDF download URL", async () => {
+    makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    const result = await publishAndMarkSent("inv-1", { withDownload: true });
+    expect(result).toEqual({ downloadUrl: "/api/invoices/inv-1/pdf" });
+  });
+
+  it("with { withDownload: false } (default), returns no download URL", async () => {
+    makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    const result = await publishAndMarkSent("inv-1");
+    expect(result).toBeUndefined();
+  });
+
+  it("throws if the BTC address is already used on an active invoice", async () => {
+    makeSupabase({
+      fetchData: PUBLISHABLE_INVOICE,
+      btcConflict: { id: "inv-other", status: "pending" },
+    });
+    await expect(publishAndMarkSent("inv-1")).rejects.toThrow(/btc_address: This bitcoin address/i);
   });
 });
 

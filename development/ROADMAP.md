@@ -759,7 +759,7 @@ New:
 
 ---
 
-### ⏳ v1.4.8 — Publish vs Send-via-email Split
+### ✅ v1.4.8 — Publish vs Send-via-email Split
 
 **Branch:** `v1.4.8/publish-send-split`
 
@@ -801,7 +801,19 @@ The current "Publish" button (on the detail page and `/invoices` per-row dropdow
 | **Mark as sent** | Publish + `status='pending', sent_at=now(), send_method='manual'`. No email, no download. |
 | **Publish only (don't send yet)** | Publish, no delivery side-effect. `status='pending'`, all three new columns stay NULL. |
 
-For an **already-published, not-yet-sent** invoice (status `pending` via "Publish only"), the same menu appears with **3 options** (the bottom row removed). For a **manually-marked-sent** invoice, "Send now via email" remains available since `email_attempted_at` is NULL. For an **email-attempted** invoice (sent or failed), the "Send now via email" item is disabled with a tooltip ("An email has already been attempted for this invoice; multiple sends are not supported").
+For an **already-published, not-yet-sent** invoice (status `pending` via "Publish only"), the same menu appears with **3 options** (the bottom row removed). For a **manually-marked-sent** invoice, "Send now via email" remains available since `email_attempted_at` is NULL — but the manual options ("Mark as sent" / "Download and mark as sent") are hidden because they are no-ops once `sent_at` is set (the existing "Download PDF" button covers that affordance). For an **email-attempted** invoice (sent or failed), the "Send now via email" item is disabled with a tooltip ("An email has already been attempted for this invoice; multiple sends are not supported").
+
+**Final visibility matrix**
+
+| State | Trigger label | Menu options |
+|---|---|---|
+| Draft | **Publish** | Send via email · Download and mark as sent · Mark as sent · Publish only |
+| Published-only (`sent_at` NULL) | **Send** | Send via email · Download and mark as sent · Mark as sent |
+| Manually-marked-sent (`sent_at` set, `email_attempted_at` NULL) | **Send** | Send via email *(only)* |
+| Email attempted but failed (`email_attempted_at` set, `sent_at` NULL) | **Send** | Send via email *(disabled)* · Download and mark as sent · Mark as sent |
+| Successfully delivered via email | (hidden) | — |
+| Manually sent + email attempted | (hidden) | — |
+| Archived | (hidden) | — |
 
 **Server actions**
 Three new actions in `src/app/(dashboard)/invoices/actions.ts`:
@@ -821,14 +833,14 @@ The `email_events` table from v1.4.3 keeps recording every send attempt; the new
 The existing `invoice-published.tsx` template is reused as-is when "Send now via email" fires. If the wording needs to be re-framed as a deliberate send rather than an auto-publish, do it in a separate small branch.
 
 **Tests**
-- [ ] Publish only — no `email_events` row written, all three new columns NULL, public URL works.
-- [ ] Publish + send email (success) — one `email_events` row (`status=sent`), `sent_at` set, `send_method='email'`, `email_attempted_at` set.
-- [ ] Publish + send email (failure) — one `email_events` row (`status=failed`), `sent_at` NULL, `send_method` NULL, `email_attempted_at` set.
-- [ ] Publish + mark as sent — no `email_events` row, `sent_at` set, `send_method='manual'`, `email_attempted_at` NULL.
-- [ ] Publish + download and mark as sent — same as above plus the response includes the PDF stream.
-- [ ] UI gate: after a failed email attempt, "Send via email" is disabled (assert disabled state in dropdown and detail page).
-- [ ] UI gate: after manual mark-as-sent (no email yet), "Send via email" is still enabled.
-- [ ] Backfill migration: applied to a fixture set, all non-drafts get the three columns populated correctly; drafts unchanged.
+- [x] Publish only — no `email_events` row written, all three new columns NULL, public URL works.
+- [x] Publish + send email (success) — one `email_events` row (`status=sent`), `sent_at` set, `send_method='email'`, `email_attempted_at` set.
+- [x] Publish + send email (failure) — one `email_events` row (`status=failed`), `sent_at` NULL, `send_method` NULL, `email_attempted_at` set.
+- [x] Publish + mark as sent — no `email_events` row, `sent_at` set, `send_method='manual'`, `email_attempted_at` NULL.
+- [x] Publish + download and mark as sent — same as above. Response shape: `{ downloadUrl: "/api/invoices/<id>/pdf" }` (the client triggers the existing PDF endpoint via `window.location`, rather than streaming megabytes through a server-action JSON envelope — same end-user effect, simpler transport).
+- [x] UI gate: after a failed email attempt, "Send via email" is disabled (assert disabled state in dropdown and detail page).
+- [x] UI gate: after manual mark-as-sent (no email yet), "Send via email" is still enabled.
+- [x] Backfill migration `0011_publish_send_split.sql` applied via `npx supabase db push`; all non-drafts get the three columns populated correctly; drafts unchanged.
 
 **Out of scope**
 - Email template re-wording (separate small branch later).
@@ -867,9 +879,88 @@ This branch makes failed-email state a first-class signal in the dashboard.
 
 ---
 
-### ⏳ v1.4.10 — Overdue Automation
+### ⏳ v1.4.10 — Invoice Activity Feed (rename + unify manual events)
 
-**Branch:** `v1.4.10/overdue-automation`
+**Branch:** `v1.4.10/invoice-activity-feed`
+
+**Context:** v1.4.3 introduced the **Email Activity** card on the invoice detail page — a clean, row-based feed of every transactional email attempt for the invoice. It is the right *shape* for an audit trail, but its scope is too narrow: today the owner can see when an email was sent, but not when the invoice was published, marked as sent, marked as paid, or marked as overdue. Those manual state transitions are equally informative and currently invisible. This branch generalises the card into a single "Invoice Activity" feed covering all of these.
+
+**Renames**
+- The card title changes from **Email Activity** → **Activity** (or **Invoice Activity** — exact wording TBD in implementation; one source of truth).
+- The component file `src/app/(dashboard)/invoices/[id]/email-activity-card.tsx` is renamed to `invoice-activity-card.tsx` (or similar). The detail-page import in `page.tsx` updates accordingly.
+
+**New event types**
+Beyond the existing `invoice_published` / `payment_detected` / `payment_confirmed` email events, the feed now surfaces:
+
+| Event | Trigger | Icon |
+|---|---|---|
+| Email sent (any type) | existing `email_events` row with `status=sent` | envelope (`Mail`) |
+| Email failed | existing `email_events` row with `status=failed` | envelope with strike / alert variant — same family for visual cohesion |
+| **Marked as sent** | `publishAndMarkSent` action sets `sent_at` with `send_method='manual'` | `Send` / paper-plane icon |
+| **Marked as paid** | `markPaid` action flips status `→ paid` | `CheckCircle` / receipt icon |
+| **Marked as overdue** | `markOverdue` action flips status `→ overdue` | `Clock` / alarm icon |
+
+All email-related events share **one icon family** (envelope) per the user's preference; manual state transitions each get a **distinct, semantically appropriate icon** (lucide-react has the relevant ones — final selection in implementation, but the constraint is "clean, not over-decorated").
+
+**Schema — new migration `supabase/migrations/00XX_invoice_activity_events.sql`**
+- New table `invoice_events` (or extend the naming pattern from `email_events`):
+  ```sql
+  create type invoice_event_type as enum (
+    'marked_as_sent',
+    'marked_as_paid',
+    'marked_as_overdue'
+  );
+
+  create table invoice_events (
+    id          uuid primary key default gen_random_uuid(),
+    invoice_id  uuid not null references invoices(id) on delete cascade,
+    user_id     uuid not null references auth.users(id) on delete cascade,
+    event_type  invoice_event_type not null,
+    created_at  timestamptz not null default now()
+  );
+
+  create index invoice_events_invoice_id_idx on invoice_events (invoice_id, created_at desc);
+  alter table invoice_events enable row level security;
+  create policy "owner can read own invoice events" on invoice_events
+    for select using (auth.uid() = user_id);
+  ```
+- Server-side writes only (service role) — no anon insert policy.
+- **No backfill.** Pre-v1.4.10 invoices show only their email events; new manual transitions accumulate from the migration date forward. (Backfilling from `invoices.sent_at` etc. is possible but not worth the complication.)
+
+**Server-action wiring**
+- `publishAndMarkSent` writes a `marked_as_sent` row alongside the `sent_at` update.
+- `markPaid` writes a `marked_as_paid` row.
+- `markOverdue` writes a `marked_as_overdue` row.
+- Failures to insert an `invoice_events` row are logged but do **not** block the primary state transition (mirrors the safeSend pattern in `email/send.ts`).
+
+**Activity card — fetch + render**
+- The card fetches both `email_events` and `invoice_events` for the invoice (single round trip if possible, otherwise two parallel queries) and merges them into one chronologically sorted list.
+- Each row: small icon (left) · short label (e.g. "Email sent to ada@example.com" / "Marked as sent") · relative time (right, e.g. "2 hours ago") with a hover-tooltip showing the absolute timestamp.
+- No new dependencies; lucide-react already provides Mail / Send / CheckCircle / Clock / AlertCircle.
+- Visual rule: keep the row height tight, no per-row borders inside the card, no expandable rows. The card is a glanceable feed, not a debugger.
+
+**Tests**
+- [ ] Migration applied; `invoice_events` table + RLS policy present.
+- [ ] `publishAndMarkSent` writes a `marked_as_sent` row in addition to the existing `sent_at` update.
+- [ ] `markPaid` writes a `marked_as_paid` row.
+- [ ] `markOverdue` writes a `marked_as_overdue` row.
+- [ ] Activity card renders email events and manual events merged into one chronological list.
+- [ ] Activity card uses the correct icon family for emails and a distinct icon per manual event.
+- [ ] If `invoice_events` insert errors, the primary state transition still succeeds (smoke test).
+- [ ] Card title is "Activity" / "Invoice Activity" (final wording — pick one and stick with it).
+
+**Out of scope**
+- Surfacing the activity feed anywhere outside the invoice detail page (e.g., a global activity stream).
+- Backfilling pre-migration manual events from `invoices.sent_at`, status history, etc.
+- Linking activity rows to "undo" or "view details" actions.
+
+**Done when:** The invoice detail page has one consolidated **Activity** card showing both email attempts and the three manual state transitions, each with its own icon, ordered most-recent-first.
+
+---
+
+### ⏳ v1.4.11 — Overdue Automation
+
+**Branch:** `v1.4.11/overdue-automation`
 
 **Context:** Today "overdue" is a fully manual status — the owner has to remember to click "Mark as overdue" after a due date passes, and the "Mark as overdue" button is offered indiscriminately even on invoices with no due date or with a due date in the future. This branch formalises the four cases into a tight state machine and automates the common one (case #1).
 
@@ -899,9 +990,9 @@ This branch makes failed-email state a first-class signal in the dashboard.
 
 ---
 
-### ⏳ v1.4.11 — BTC Address Hardening
+### ⏳ v1.4.12 — BTC Address Hardening
 
-**Branch:** `v1.4.11/btc-address-hardening`
+**Branch:** `v1.4.12/btc-address-hardening`
 
 **Context:** Three related gaps in BTC address validation and mempool URL handling discovered during v1.4 testing:
 
@@ -937,9 +1028,9 @@ This branch makes failed-email state a first-class signal in the dashboard.
 
 ---
 
-### ⏳ v1.4.12 — Payment Detection Latency (no "Mark as Sent" path)
+### ⏳ v1.4.13 — Payment Detection Latency (no "Mark as Sent" path)
 
-**Branch:** `v1.4.12/payment-detection-latency`
+**Branch:** `v1.4.13/payment-detection-latency`
 
 **Context:** In v1.3.3 we shipped the "Mark as Payment Sent" dialog which front-loads mempool.space polling (5×2s + 5×3s + 3×5s + 2×10s = 15 polls / 60s). When the payer clicks that button, detection is fast — 2–10 seconds typical. But when the payer *doesn't* click it (just pays and closes the tab, or doesn't notice the button), detection falls back to the passive WebSocket watcher (A) and the background cron (C). The WebSocket is usually instant — but if it drops, the fallback polling starts at 10s and exponentially backs off. And if the tab closes before the WebSocket sees the tx, the payer has to wait for the cron — which is minute-granular at best, and the first cron-side poll is scheduled for +1m post-publish.
 
@@ -963,9 +1054,9 @@ Real-world testing showed end-to-end latency in the "paid without clicking the b
 
 ---
 
-### ⏳ v1.4.13 — Fiat Payment Flow + Manual Confirmation + Mark-as-Unpaid
+### ⏳ v1.4.14 — Fiat Payment Flow + Manual Confirmation + Mark-as-Unpaid
 
-**Branch:** `v1.4.13/fiat-payment-and-manual-confirmation`
+**Branch:** `v1.4.14/fiat-payment-and-manual-confirmation`
 
 **Context:** Three tightly coupled features:
 
@@ -1023,9 +1114,9 @@ alter table invoices add column paid_at timestamptz;
 
 ---
 
-### ⏳ v1.4.14 — Rename Paybitty → SatSend
+### ⏳ v1.4.15 — Rename Paybitty → SatSend
 
-**Branch:** `v1.4.14/rename-to-satsend`
+**Branch:** `v1.4.15/rename-to-satsend`
 
 **Context:** The product has been renamed from **Paybitty** to **SatSend**. This is the rename branch — purely mechanical, no behaviour changes. Lands as the final patch in the v1.4 train so that the v1.5 design-system overhaul starts from a clean-branded codebase.
 

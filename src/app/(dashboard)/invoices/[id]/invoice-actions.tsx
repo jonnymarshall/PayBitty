@@ -3,14 +3,29 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { deleteDraft, duplicateInvoice, markOverdue, markPaid, markUnpaid, publishInvoice } from "../actions";
+import { PublishMenu } from "@/components/publish-menu";
+import {
+  deleteDraft,
+  duplicateInvoice,
+  markOverdue,
+  markPaid,
+  markUnpaid,
+  publishInvoice,
+  publishAndSendEmail,
+  publishAndMarkSent,
+} from "../actions";
 import { bulkArchive, bulkDelete, bulkUnarchive } from "../bulk-actions";
 import { parseServerError } from "@/lib/invoices";
 
 interface Invoice {
   id: string;
   status: string;
+  client_email?: string | null;
+  sent_at?: string | null;
+  send_method?: "email" | "manual" | null;
+  email_attempted_at?: string | null;
 }
 
 export function InvoiceActions({ invoice }: { invoice: Invoice }) {
@@ -22,6 +37,14 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
   const isArchived = invoice.status === "archived";
   const isPaid = invoice.status === "paid";
   const canMarkPaid = !isDraft && !isArchived && !isPaid;
+  // The menu has at least one useful action when:
+  //   - it's a draft (Publish-only is always relevant), OR
+  //   - the invoice hasn't been marked sent (manual options are usable), OR
+  //   - the invoice hasn't yet had an email attempt (Send via email is reachable).
+  // Once both sent_at and email_attempted_at are set, every action is a no-op — hide the trigger.
+  const emailReachable = !invoice.email_attempted_at && !!invoice.client_email;
+  const hasUsefulPublishAction = isDraft || !invoice.sent_at || emailReachable;
+  const canShowPublishMenu = !isArchived && hasUsefulPublishAction;
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -50,9 +73,21 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
     }
   }
 
+  const deliveryLine =
+    invoice.sent_at && invoice.send_method
+      ? invoice.send_method === "email"
+        ? `Sent via email on ${format(new Date(invoice.sent_at), "MMM d, yyyy")}`
+        : `Marked as sent on ${format(new Date(invoice.sent_at), "MMM d, yyyy")}`
+      : null;
+
   return (
     <div id="invoice-actions" className="space-y-3 pb-8">
       {error && <p id="invoice-actions--error" className="text-sm text-primary">{error}</p>}
+      {deliveryLine && (
+        <p id="invoice-actions--delivery-status" className="text-sm text-muted-foreground">
+          {deliveryLine}
+        </p>
+      )}
       <div id="invoice-actions--buttons" className="flex gap-3 flex-wrap">
         {isDraft && (
           <Link href={`/invoices/${invoice.id}/edit`}>
@@ -72,14 +107,34 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
           </a>
         )}
 
-        {isDraft && (
-          <Button
-            id="invoice-actions--mark-sent-button"
-            onClick={() => run(() => publishInvoice(invoice.id))}
-            disabled={busy}
-          >
-            Mark as sent
-          </Button>
+        {canShowPublishMenu && (
+          <PublishMenu
+            invoiceId={invoice.id}
+            isDraft={isDraft}
+            emailAttemptedAt={invoice.email_attempted_at ?? null}
+            clientEmail={invoice.client_email ?? null}
+            sentAt={invoice.sent_at ?? null}
+            sendMethod={invoice.send_method ?? null}
+            busy={busy}
+            onSendEmail={(id) =>
+              run(async () => {
+                const result = await publishAndSendEmail(id);
+                if (result.emailStatus === "failed") {
+                  setError("Email delivery failed. The invoice has been published; visit the activity log for details.");
+                }
+              })
+            }
+            onMarkSent={(id) => run(() => publishAndMarkSent(id))}
+            onDownloadAndMarkSent={(id) =>
+              run(async () => {
+                const result = await publishAndMarkSent(id, { withDownload: true });
+                if (result?.downloadUrl && typeof window !== "undefined") {
+                  window.location.href = result.downloadUrl;
+                }
+              })
+            }
+            onPublishOnly={(id) => run(() => publishInvoice(id))}
+          />
         )}
 
         {canMarkPaid && (

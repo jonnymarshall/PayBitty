@@ -27,10 +27,16 @@ interface ResendSendResult {
   error?: { name?: string; message?: string } | null;
 }
 
+export type EmailOutcomeStatus = "sent" | "failed" | "skipped_no_api_key";
+export interface EmailOutcome {
+  status: EmailOutcomeStatus;
+  errorMessage?: string;
+}
+
 async function safeSend(
   ctx: EmailContext,
   send: () => Promise<ResendSendResult>,
-): Promise<void> {
+): Promise<EmailOutcome> {
   const admin = createAdminClient();
 
   const { data: row, error: insertError } = await admin
@@ -47,7 +53,7 @@ async function safeSend(
 
   if (insertError || !row) {
     console.error(`[email] failed to record ${ctx.type} event`, insertError);
-    return;
+    return { status: "failed", errorMessage: insertError?.message };
   }
 
   const eventId = row.id;
@@ -58,7 +64,7 @@ async function safeSend(
       .update({ status: "skipped_no_api_key", updated_at: new Date().toISOString() })
       .eq("id", eventId);
     console.warn(`[email] skipping ${ctx.type} — RESEND_API_KEY not set`);
-    return;
+    return { status: "skipped_no_api_key" };
   }
 
   try {
@@ -74,7 +80,7 @@ async function safeSend(
         })
         .eq("id", eventId);
       console.error(`[email] ${ctx.type} failed`, result.error);
-      return;
+      return { status: "failed", errorMessage: message };
     }
     await admin
       .from("email_events")
@@ -85,6 +91,7 @@ async function safeSend(
       })
       .eq("id", eventId);
     console.log(`[email] ${ctx.type} sent`);
+    return { status: "sent" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await admin
@@ -96,6 +103,7 @@ async function safeSend(
       })
       .eq("id", eventId);
     console.error(`[email] ${ctx.type} failed`, err);
+    return { status: "failed", errorMessage: message };
   }
 }
 
@@ -112,8 +120,8 @@ export interface SendInvoicePublishedArgs {
   dueDateDisplay: string | null;
 }
 
-export async function sendInvoicePublishedEmail(args: SendInvoicePublishedArgs): Promise<void> {
-  await safeSend(
+export async function sendInvoicePublishedEmail(args: SendInvoicePublishedArgs): Promise<EmailOutcome> {
+  return await safeSend(
     {
       invoiceId: args.invoiceId,
       userId: args.userId,

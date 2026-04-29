@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Mail, HandHelping } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -18,15 +18,22 @@ export interface InvoiceRow {
   id: string;
   invoice_number: string | null;
   client_name: string | null;
+  client_email: string | null;
   total_fiat: number;
   currency: string;
   status: string;
   due_date: string | null;
   created_at: string;
+  sent_at: string | null;
+  send_method: "email" | "manual" | null;
+  email_attempted_at: string | null;
 }
 
 export interface RowActions {
+  onPublishOnly: (id: string) => void;
+  onSendEmail: (id: string) => void;
   onMarkSent: (id: string) => void;
+  onDownloadAndMarkSent: (id: string) => void;
   onMarkPaid: (id: string) => void;
   onMarkOverdue: (id: string) => void;
   onArchive: (id: string) => void;
@@ -140,7 +147,31 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
     {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => <InvoiceStatusBadge status={row.original.status} />,
+      cell: ({ row }) => {
+        const r = row.original;
+        const sentIcon =
+          r.send_method === "email" ? (
+            <Mail
+              className="h-3.5 w-3.5 text-muted-foreground"
+              aria-label="Sent via email"
+            >
+              <title>Sent via email</title>
+            </Mail>
+          ) : r.send_method === "manual" ? (
+            <HandHelping
+              className="h-3.5 w-3.5 text-muted-foreground"
+              aria-label="Marked as sent manually"
+            >
+              <title>Marked as sent manually</title>
+            </HandHelping>
+          ) : null;
+        return (
+          <div className="flex items-center gap-1.5">
+            <InvoiceStatusBadge status={r.status} />
+            {sentIcon}
+          </div>
+        );
+      },
       filterFn: (row, columnId, filterValue: string[]) => {
         if (!filterValue || filterValue.length === 0) return true;
         return filterValue.includes(row.getValue(columnId) as string);
@@ -153,6 +184,17 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
         const invoice = row.original;
         const isDraft = invoice.status === "draft";
         const isArchived = invoice.status === "archived";
+        // Manual mark-as-sent leaves email_attempted_at NULL, so the Send menu must remain reachable.
+        // Hide only when every action is a no-op: invoice is marked sent AND an email has been attempted.
+        const emailReachable = !invoice.email_attempted_at && !!invoice.client_email;
+        const hasUsefulPublishAction = isDraft || !invoice.sent_at || emailReachable;
+        const showPublishMenu = !isArchived && hasUsefulPublishAction;
+        const emailDisabled = !!invoice.email_attempted_at || !invoice.client_email;
+        const emailDisabledReason = invoice.email_attempted_at
+          ? "An email has already been attempted for this invoice; multiple sends are not supported."
+          : !invoice.client_email
+          ? "No client email on this invoice — cannot send."
+          : undefined;
         return (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -177,10 +219,31 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                   <DropdownMenuItem render={<a href={`/api/invoices/${invoice.id}/pdf`} download>Download PDF</a>} />
                 </>
               )}
-              {isDraft && (
-                <DropdownMenuItem onClick={() => actions.onMarkSent(invoice.id)}>
-                  Mark as sent
-                </DropdownMenuItem>
+              {showPublishMenu && (
+                <>
+                  <DropdownMenuItem
+                    disabled={emailDisabled}
+                    title={emailDisabled ? emailDisabledReason : undefined}
+                    onClick={() => !emailDisabled && actions.onSendEmail(invoice.id)}
+                  >
+                    Send now via email
+                  </DropdownMenuItem>
+                  {!invoice.sent_at && (
+                    <>
+                      <DropdownMenuItem onClick={() => actions.onDownloadAndMarkSent(invoice.id)}>
+                        Download and mark as sent
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => actions.onMarkSent(invoice.id)}>
+                        Mark as sent
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {isDraft && (
+                    <DropdownMenuItem onClick={() => actions.onPublishOnly(invoice.id)}>
+                      Publish only (don&apos;t send yet)
+                    </DropdownMenuItem>
+                  )}
+                </>
               )}
               {invoice.status !== "paid" && !isDraft && (
                 <DropdownMenuItem onClick={() => actions.onMarkPaid(invoice.id)}>
