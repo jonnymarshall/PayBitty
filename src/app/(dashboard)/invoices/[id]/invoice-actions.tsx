@@ -6,6 +6,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { PublishMenu } from "@/components/publish-menu";
+import { MarkAsMenu } from "@/components/mark-as-menu";
 import {
   deleteDraft,
   duplicateInvoice,
@@ -36,8 +37,7 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
 
   const isDraft = invoice.status === "draft";
   const isArchived = invoice.status === "archived";
-  const isPaid = invoice.status === "paid";
-  const canMarkPaid = !isDraft && !isArchived && !isPaid;
+  const canShowMarkAsMenu = !isDraft && !isArchived;
   // Hide the publish/send trigger only when truly nothing remains to do — i.e., the invoice
   // has both been marked sent AND had an email attempt. Until then keep the menu reachable
   // (even with no client_email — the "Send via email" item explains via tooltip).
@@ -169,36 +169,15 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
           />
         )}
 
-        {canMarkPaid && (
-          <Button
-            id="invoice-actions--mark-paid-button"
-            onClick={() => run(() => markPaid(invoice.id))}
-            disabled={busy}
-          >
-            Mark as paid
-          </Button>
-        )}
-
-        {invoice.status === "pending" && (
-          <Button
-            id="invoice-actions--mark-overdue-button"
-            variant="outline"
-            onClick={() => run(() => markOverdue(invoice.id))}
-            disabled={busy}
-          >
-            Mark as overdue
-          </Button>
-        )}
-
-        {isPaid && (
-          <Button
-            id="invoice-actions--mark-unpaid-button"
-            variant="outline"
-            onClick={() => run(() => markUnpaid(invoice.id))}
-            disabled={busy}
-          >
-            Mark as unpaid
-          </Button>
+        {canShowMarkAsMenu && (
+          <MarkAsMenu
+            invoiceId={invoice.id}
+            status={invoice.status}
+            busy={busy}
+            onMarkPaid={(id) => run(() => markPaid(id))}
+            onMarkUnpaid={(id) => run(() => markUnpaid(id))}
+            onMarkOverdue={(id) => run(() => markOverdue(id))}
+          />
         )}
 
         {isArchived && (
