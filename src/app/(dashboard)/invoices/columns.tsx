@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Mail, HandHelping } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Mail, HandHelping, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ export interface InvoiceRow {
   sent_at: string | null;
   send_method: "email" | "manual" | null;
   email_attempted_at: string | null;
+  last_publish_email_status: "queued" | "sent" | "failed" | "skipped_no_api_key" | null;
+  last_publish_email_error: string | null;
 }
 
 export interface RowActions {
@@ -149,26 +151,36 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
       header: "Status",
       cell: ({ row }) => {
         const r = row.original;
-        const sentIcon =
-          r.send_method === "email" ? (
-            <Mail
-              className="h-3.5 w-3.5 text-muted-foreground"
-              aria-label="Sent via email"
-            >
-              <title>Sent via email</title>
-            </Mail>
-          ) : r.send_method === "manual" ? (
-            <HandHelping
-              className="h-3.5 w-3.5 text-muted-foreground"
-              aria-label="Marked as sent manually"
-            >
-              <title>Marked as sent manually</title>
-            </HandHelping>
-          ) : null;
+        // Failed-publish takes precedence over the sent-method icon: a row
+        // whose last email attempt failed shows only the failure indicator,
+        // never both icons stacked together.
+        const isFailed = r.last_publish_email_status === "failed";
+        const trailingIcon = isFailed ? (
+          <AlertCircle
+            className="proxy-id--invoice-row--email-failed-indicator h-3.5 w-3.5 text-destructive"
+            aria-label="Email failed to send to this client"
+          >
+            <title>Email failed to send to this client</title>
+          </AlertCircle>
+        ) : r.send_method === "email" ? (
+          <Mail
+            className="h-3.5 w-3.5 text-muted-foreground"
+            aria-label="Sent via email"
+          >
+            <title>Sent via email</title>
+          </Mail>
+        ) : r.send_method === "manual" ? (
+          <HandHelping
+            className="h-3.5 w-3.5 text-muted-foreground"
+            aria-label="Marked as sent manually"
+          >
+            <title>Marked as sent manually</title>
+          </HandHelping>
+        ) : null;
         return (
           <div className="flex items-center gap-1.5">
             <InvoiceStatusBadge status={r.status} />
-            {sentIcon}
+            {trailingIcon}
           </div>
         );
       },
