@@ -21,6 +21,8 @@ vi.mock("@/app/(dashboard)/invoices/actions", () => ({
   saveDraft: vi.fn().mockResolvedValue({ id: "test-id" }),
   updateDraft: vi.fn().mockResolvedValue({}),
   publishInvoice: vi.fn().mockResolvedValue({}),
+  publishAndSendEmail: vi.fn().mockResolvedValue({ emailStatus: "sent" }),
+  publishAndMarkSent: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("InvoiceForm your_email field", () => {
@@ -70,6 +72,11 @@ describe("InvoiceForm access code", () => {
 });
 
 describe("InvoiceForm BTC address validation", () => {
+  async function choosePublishOnly(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: /^publish/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /publish only/i }));
+  }
+
   it("shows an error when publishing with an invalid BTC address", async () => {
     const user = userEvent.setup();
     render(<InvoiceForm />);
@@ -77,7 +84,7 @@ describe("InvoiceForm BTC address validation", () => {
     await user.click(screen.getByRole("checkbox", { name: /accept bitcoin/i }));
     const btcInput = screen.getByPlaceholderText(/bc1q/i);
     await user.type(btcInput, "notavalidaddress");
-    await user.click(screen.getByRole("button", { name: /publish invoice/i }));
+    await choosePublishOnly(user);
 
     expect(screen.getByText(/invalid btc address/i)).toBeInTheDocument();
   });
@@ -89,9 +96,35 @@ describe("InvoiceForm BTC address validation", () => {
     await user.click(screen.getByRole("checkbox", { name: /accept bitcoin/i }));
     const btcInput = screen.getByPlaceholderText(/bc1q/i);
     await user.type(btcInput, "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
-    await user.click(screen.getByRole("button", { name: /publish invoice/i }));
+    await choosePublishOnly(user);
 
     expect(screen.queryByText(/invalid btc address/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceForm publish/send menu", () => {
+  it("renders a 'Publish' split-button (not the legacy 'Publish invoice' button)", () => {
+    render(<InvoiceForm />);
+    expect(screen.getByRole("button", { name: /^publish/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /publish invoice/i })).not.toBeInTheDocument();
+  });
+
+  it("offers all four publish options for a new draft", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+    await user.click(screen.getByRole("button", { name: /^publish/i }));
+    expect(await screen.findByRole("menuitem", { name: /send now via email/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /download and mark as sent/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^mark as sent$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /publish only/i })).toBeInTheDocument();
+  });
+
+  it("disables 'Send now via email' when no client_email is filled in", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+    await user.click(screen.getByRole("button", { name: /^publish/i }));
+    const item = await screen.findByRole("menuitem", { name: /send now via email/i });
+    expect(item).toHaveAttribute("data-disabled");
   });
 });
 
