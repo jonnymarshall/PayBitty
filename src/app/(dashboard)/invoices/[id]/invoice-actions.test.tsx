@@ -54,9 +54,9 @@ describe("InvoiceActions — draft status", () => {
     expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
   });
 
-  it("does not render non-draft-only actions (Mark as paid, View public invoice, Archive, Unarchive)", () => {
+  it("does not render non-draft-only actions (Mark as menu, View public invoice, Archive, Unarchive)", () => {
     render(<InvoiceActions invoice={draft} />);
-    expect(screen.queryByRole("button", { name: /^mark as paid$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^mark as$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /view public invoice/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^archive$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /unarchive/i })).not.toBeInTheDocument();
@@ -237,11 +237,11 @@ describe("InvoiceActions — v1.4.8 send-via-email gating", () => {
 describe("InvoiceActions — pending status", () => {
   const pending = { id: "inv-p", status: "pending" };
 
-  it("renders View public invoice, Mark as paid, Archive, Duplicate, Delete (no Copy public link — already on the Share section)", () => {
+  it("renders View public invoice, Mark as menu, Archive, Duplicate, Delete (no Copy public link — already on the Share section)", () => {
     render(<InvoiceActions invoice={pending} />);
     expect(screen.getByRole("link", { name: /view public invoice/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /copy public link/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /mark as paid/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^mark as$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^archive$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /duplicate/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
@@ -261,9 +261,10 @@ describe("InvoiceActions — pending status", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
-  it("calls markPaid when Mark as paid is clicked", async () => {
+  it("calls markPaid when Paid is chosen from the Mark as menu", async () => {
     render(<InvoiceActions invoice={pending} />);
-    fireEvent.click(screen.getByRole("button", { name: /mark as paid/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^mark as$/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^paid$/i }));
     await waitFor(() => expect(markPaid).toHaveBeenCalledWith("inv-p"));
   });
 
@@ -283,11 +284,11 @@ describe("InvoiceActions — pending status", () => {
 describe("InvoiceActions — archived status", () => {
   const archived = { id: "inv-a", status: "archived" };
 
-  it("renders Unarchive (not Archive) and does not render Mark as paid", () => {
+  it("renders Unarchive (not Archive) and does not render the Mark as menu", () => {
     render(<InvoiceActions invoice={archived} />);
     expect(screen.getByRole("button", { name: /unarchive/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^archive$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^mark as paid$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^mark as$/i })).not.toBeInTheDocument();
   });
 
   it("calls bulkUnarchive when Unarchive is clicked", async () => {
@@ -307,9 +308,12 @@ describe("InvoiceActions — archived status", () => {
 describe("InvoiceActions — paid status", () => {
   const paid = { id: "inv-paid", status: "paid" };
 
-  it("does not render Mark as paid (already paid)", () => {
+  it("Mark as menu hides the Paid item (already paid) and offers Unpaid + Overdue", () => {
     render(<InvoiceActions invoice={paid} />);
-    expect(screen.queryByRole("button", { name: /^mark as paid$/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^mark as$/i }));
+    expect(screen.queryByRole("menuitem", { name: /^paid$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^unpaid$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^overdue$/i })).toBeInTheDocument();
   });
 
   it("still renders View public invoice, Archive, Duplicate, Delete", () => {

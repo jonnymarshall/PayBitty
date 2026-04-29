@@ -6,15 +6,19 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/email/send", () => ({
   sendInvoicePublishedEmail: vi.fn().mockResolvedValue({ status: "sent" }),
 }));
+vi.mock("@/lib/invoice-events", () => ({ logInvoiceEvent: vi.fn().mockResolvedValue(undefined) }));
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { sendInvoicePublishedEmail } from "@/lib/email/send";
+import { logInvoiceEvent } from "@/lib/invoice-events";
 import {
   saveDraft,
   publishInvoice,
   publishAndSendEmail,
   publishAndMarkSent,
+  markPaid,
+  markUnpaid,
   deleteDraft,
   markOverdue,
   duplicateInvoice,
@@ -247,6 +251,16 @@ describe("publishAndMarkSent", () => {
     expect(sentAt).toBeLessThanOrEqual(after + 1_000);
   });
 
+  it("logs a marked_as_sent invoice_events row alongside the sent_at update", async () => {
+    makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    await publishAndMarkSent("inv-1");
+    expect(logInvoiceEvent).toHaveBeenCalledWith({
+      invoiceId: "inv-1",
+      userId: "user-1",
+      eventType: "marked_as_sent",
+    });
+  });
+
   it("with { withDownload: true }, response includes the PDF download URL", async () => {
     makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
     const result = await publishAndMarkSent("inv-1", { withDownload: true });
@@ -285,6 +299,48 @@ describe("deleteDraft", () => {
   });
 });
 
+describe("markPaid", () => {
+  it("sets status to paid on the invoice", async () => {
+    const { updateChain } = makeSupabase({
+      fetchData: { id: "inv-1", status: "pending", user_id: "user-1" },
+    });
+    await markPaid("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("paid");
+  });
+
+  it("logs a marked_as_paid invoice_events row", async () => {
+    makeSupabase({ fetchData: { id: "inv-1", status: "pending", user_id: "user-1" } });
+    await markPaid("inv-1");
+    expect(logInvoiceEvent).toHaveBeenCalledWith({
+      invoiceId: "inv-1",
+      userId: "user-1",
+      eventType: "marked_as_paid",
+    });
+  });
+});
+
+describe("markUnpaid", () => {
+  it("sets status to pending on a paid invoice", async () => {
+    const { updateChain } = makeSupabase({
+      fetchData: { id: "inv-1", status: "paid", user_id: "user-1" },
+    });
+    await markUnpaid("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+  });
+
+  it("logs a marked_as_unpaid invoice_events row", async () => {
+    makeSupabase({ fetchData: { id: "inv-1", status: "paid", user_id: "user-1" } });
+    await markUnpaid("inv-1");
+    expect(logInvoiceEvent).toHaveBeenCalledWith({
+      invoiceId: "inv-1",
+      userId: "user-1",
+      eventType: "marked_as_unpaid",
+    });
+  });
+});
+
 describe("markOverdue", () => {
   it("sets status to overdue on a pending invoice", async () => {
     const { updateEq } = makeSupabase({
@@ -292,6 +348,16 @@ describe("markOverdue", () => {
     });
     await markOverdue("inv-1");
     expect(updateEq).toHaveBeenCalled();
+  });
+
+  it("logs a marked_as_overdue invoice_events row", async () => {
+    makeSupabase({ fetchData: { id: "inv-1", status: "pending", user_id: "user-1" } });
+    await markOverdue("inv-1");
+    expect(logInvoiceEvent).toHaveBeenCalledWith({
+      invoiceId: "inv-1",
+      userId: "user-1",
+      eventType: "marked_as_overdue",
+    });
   });
 });
 

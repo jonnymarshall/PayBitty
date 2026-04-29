@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { computeInvoiceTotals, isValidBtcAddress, LineItem } from "@/lib/invoices";
 import { sendInvoicePublishedEmail } from "@/lib/email/send";
+import { logInvoiceEvent } from "@/lib/invoice-events";
 
 export interface InvoicePayload {
   invoice_number?: string;
@@ -242,11 +243,17 @@ export async function publishAndMarkSent(
   invoiceId: string,
   opts: { withDownload?: boolean } = {},
 ): Promise<{ downloadUrl: string } | undefined> {
-  const { supabase } = await loadAndAuthorise(invoiceId);
+  const { supabase, invoice } = await loadAndAuthorise(invoiceId);
 
   await applyPublishUpdate(supabase, invoiceId, {
     sent_at: new Date().toISOString(),
     send_method: "manual",
+  });
+
+  await logInvoiceEvent({
+    invoiceId,
+    userId: invoice.user_id,
+    eventType: "marked_as_sent",
   });
 
   if (opts.withDownload) {
@@ -272,6 +279,13 @@ export async function markPaid(invoiceId: string) {
     .eq("id", invoiceId);
 
   if (error) throw new Error(error.message);
+
+  await logInvoiceEvent({
+    invoiceId,
+    userId: invoice.user_id,
+    eventType: "marked_as_paid",
+  });
+
   revalidatePath("/dashboard");
   revalidatePath(`/invoices/${invoiceId}`);
 }
@@ -312,6 +326,13 @@ export async function markUnpaid(invoiceId: string) {
     .eq("id", invoiceId);
 
   if (error) throw new Error(error.message);
+
+  await logInvoiceEvent({
+    invoiceId,
+    userId: invoice.user_id,
+    eventType: "marked_as_unpaid",
+  });
+
   revalidatePath("/dashboard");
   revalidatePath(`/invoices/${invoiceId}`);
 }
@@ -382,5 +403,12 @@ export async function markOverdue(invoiceId: string) {
     .eq("id", invoiceId);
 
   if (error) throw new Error(error.message);
+
+  await logInvoiceEvent({
+    invoiceId,
+    userId: invoice.user_id,
+    eventType: "marked_as_overdue",
+  });
+
   revalidatePath("/dashboard");
 }

@@ -92,6 +92,22 @@ Just the cron, plus a tapering schedule. After publish, checks happen at +1 min,
 
 ---
 
+## Bitcoin address policy
+
+**Each invoice must use a fresh BTC receive address — one with no prior on-chain activity.** The assumption is that owners are running an HD wallet (Sparrow, BlueWallet, Ledger, etc.) that auto-derives a new receive address per invoice. Pasting in a reused address, an exchange deposit address, or any address that has already received Bitcoin is unsupported.
+
+**Why fresh-only:**
+
+- **Detection unambiguity.** The on-chain detector counts any tx at the address as the payment for this invoice. If the address has prior history, a stale tx of the right amount would falsely mark the invoice as paid.
+- **Counterparty privacy.** Reusing an address across invoices ties multiple clients' payments to the same on-chain identity.
+- **Simpler under/overpayment logic.** With fresh-only addresses we can compare the single received amount to the invoice total directly, without timestamp gating or per-tx attribution.
+
+**Current enforcement:** the app rejects publishing an invoice whose BTC address is already used on another *active* invoice in the database (uniqueness check inside the user's account). Pre-publish on-chain freshness — rejecting any address with prior `chain_stats.tx_count > 0` or `mempool_stats.tx_count > 0` on the configured network — is **planned in `v1.4.12 — BTC Address Hardening`** and is not yet enforced. Until that branch lands, owners must self-police address freshness.
+
+**If mempool.space is unreachable:** once v1.4.12 ships, the publish-time check will gracefully degrade — log a warning and allow publish — rather than block the owner on an external dependency. The check is conditional on `NEXT_PUBLIC_BTC_NETWORK` so testnet addresses are validated against testnet4.
+
+---
+
 ## Detailed mechanics
 
 For the implementation specifics — file paths, exact intervals, code references — read on. The plain-English section above is enough to use and debug the system.
