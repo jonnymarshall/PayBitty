@@ -883,7 +883,7 @@ This branch makes failed-email state a first-class signal in the dashboard.
 
 ---
 
-### ⏳ v1.4.10 — Invoice Activity Feed (rename + unify manual events)
+### ✅ v1.4.10 — Invoice Activity Feed (rename + unify manual events)
 
 **Branch:** `v1.4.10/invoice-activity-feed`
 
@@ -944,14 +944,14 @@ All email-related events share **one icon family** (envelope) per the user's pre
 - Visual rule: keep the row height tight, no per-row borders inside the card, no expandable rows. The card is a glanceable feed, not a debugger.
 
 **Tests**
-- [ ] Migration applied; `invoice_events` table + RLS policy present.
-- [ ] `publishAndMarkSent` writes a `marked_as_sent` row in addition to the existing `sent_at` update.
-- [ ] `markPaid` writes a `marked_as_paid` row.
-- [ ] `markOverdue` writes a `marked_as_overdue` row.
-- [ ] Activity card renders email events and manual events merged into one chronological list.
-- [ ] Activity card uses the correct icon family for emails and a distinct icon per manual event.
-- [ ] If `invoice_events` insert errors, the primary state transition still succeeds (smoke test).
-- [ ] Card title is "Activity" / "Invoice Activity" (final wording — pick one and stick with it).
+- [x] Migration applied; `invoice_events` table + RLS policy present.
+- [x] `publishAndMarkSent` writes a `marked_as_sent` row in addition to the existing `sent_at` update.
+- [x] `markPaid` writes a `marked_as_paid` row.
+- [x] `markOverdue` writes a `marked_as_overdue` row.
+- [x] Activity card renders email events and manual events merged into one chronological list.
+- [x] Activity card uses the correct icon family for emails and a distinct icon per manual event.
+- [x] If `invoice_events` insert errors, the primary state transition still succeeds (smoke test).
+- [x] Card title is "Activity" / "Invoice Activity" (final wording — pick one and stick with it).
 
 **Out of scope**
 - Surfacing the activity feed anywhere outside the invoice detail page (e.g., a global activity stream).

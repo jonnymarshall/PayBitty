@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.10] - 2026-04-29
+
+### Changed
+- **Email Activity card → Activity card.** The invoice detail page's per-invoice feed now covers manual state transitions in addition to email attempts. Three new event types — `marked_as_sent`, `marked_as_paid`, `marked_as_overdue` — are recorded server-side via a new `invoice_events` table (migration `0013_invoice_activity_events.sql`, RLS-scoped to the owner, service-role inserts only) whenever `publishAndMarkSent` / `markPaid` / `markOverdue` runs. The card fetches both `email_events` and `invoice_events` in parallel, merges them most-recent-first, and renders each row with a distinct icon: envelope (Mail / AlertCircle for failed) for emails, paper-plane (Send) for marked-as-sent, check-circle for marked-as-paid, clock for marked-as-overdue. Logging failures are swallowed so the primary state transition always succeeds. No backfill — pre-v1.4.10 invoices show only their email events.
+
 ## [1.4.9] - 2026-04-29
 
 ### Added

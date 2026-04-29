@@ -54,7 +54,7 @@ vi.mock("next/navigation", () => ({ notFound: vi.fn() }));
 vi.mock("@/lib/btc-network", () => ({ getMempoolBaseUrl: () => "https://mempool.space" }));
 vi.mock("./invoice-actions", () => ({ InvoiceActions: () => null }));
 vi.mock("./invoice-detail-realtime", () => ({ InvoiceDetailRealtime: () => null }));
-vi.mock("./email-activity-card", () => ({ EmailActivityCard: () => null }));
+vi.mock("./invoice-activity-card", () => ({ InvoiceActivityCard: () => null }));
 
 describe("InvoiceDetailPage — dates", () => {
   it("shows 'Date Sent:' label with formatted date", async () => {
