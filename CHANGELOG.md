@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.9] - 2026-04-29
+
+### Added
+- **Per-row email-failed indicator on `/invoices`.** A small destructive-tinted `AlertCircle` icon appears next to the status badge for any row whose last publish-email attempt failed, with a tooltip "Email failed to send to this client". On a row that was sent via email but the send failed, the failed indicator replaces the sent-method icon (single icon, not stacked).
+
+### Changed
+- **`/invoices` list page now reads from `invoice_email_summary` view.** New view (migration `0012_invoice_email_summary.sql`) left-joins `invoices` to the most-recent `invoice_published` row in `email_events`, exposing `last_publish_email_status`, `last_publish_email_error`, and `last_publish_email_at` as first-class fields. Single source of truth for "did the last publish email fail?" — the row-level indicator reads a real DB field rather than an app-derived flag, and a future Resend bounce/complaint webhook can update `email_events` and surface in the same UI without call-site changes. RLS is inherited from the underlying tables.
+
+### Known limitation
+
+- **Bounce / complaint state is still send-time only.** `email_events.status='failed'` means "Resend rejected the request at send-time". Post-acceptance bounces and spam complaints arrive via Resend webhooks, which remain out of scope. The detail page already surfaces the failure reason inside the **Email Activity** card (introduced in v1.4.3), so v1.4.9 deliberately doesn't duplicate that signal at the top of the detail page.
+
 ## [1.4.8] - 2026-04-29
 
 ### Added

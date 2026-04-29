@@ -7,7 +7,7 @@ export default async function InvoicesPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   const { data: invoices } = await supabase
-    .from("invoices")
+    .from("invoice_email_summary")
     .select("*")
     .eq("user_id", user?.id ?? "")
     .order("created_at", { ascending: false });

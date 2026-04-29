@@ -853,7 +853,7 @@ The existing `invoice-published.tsx` template is reused as-is when "Send now via
 
 ---
 
-### ⏳ v1.4.9 — Failed Email Surfacing
+### ✅ v1.4.9 — Failed Email Surfacing
 
 **Branch:** `v1.4.9/failed-email-surfacing`
 
@@ -861,23 +861,25 @@ The existing `invoice-published.tsx` template is reused as-is when "Send now via
 
 This branch makes failed-email state a first-class signal in the dashboard.
 
-**Scope**
-- [ ] Detail page — when the most recent `email_events` row of `type=invoice_published` for this invoice is `status=failed`, show a small alert under the status badge: "Email delivery failed: <reason>". Add a "View activity" link that scrolls to the existing email-events card.
-- [ ] `/invoices` per-row visual cue — a small "!" badge on the status badge for any invoice with a failed last email-publish. Tooltip: "Email failed to send to this client".
-- [ ] Filter on `/invoices` — add an "Email failed" filter chip alongside the existing status filter.
-- [ ] Derive failed-email state live from `email_events` (no new column needed). Cache via the existing data-table query rather than an extra request.
+**Implementation note (revised during build):** rather than deriving failed-email state in the page layer, v1.4.9 introduces a Postgres view `invoice_email_summary` (migration `0012`) that left-joins each invoice to its most-recent `invoice_published` row in `email_events`. The `/invoices` list reads from the view directly, exposing `last_publish_email_status`, `last_publish_email_error`, and `last_publish_email_at` as first-class fields. This keeps `email_events` as the single source of truth, makes the row-level indicator read a real DB field (not an app-derived flag), and means a future Resend bounce/complaint webhook only writes/updates `email_events` — the UI reflects automatically.
+
+**Scope decisions during build:**
+- A detail-page alert at the top of the invoice was scoped out — the existing **Email Activity** card (v1.4.3) already shows the per-attempt failure reason in red, and a duplicate alert at the top of the page was redundant.
+- The "Email failed" filter toggle on `/invoices` was scoped out — too niche relative to the per-row indicator, which already gives at-a-glance recognition.
+
+**Scope (final)**
+- [x] `/invoices` per-row visual cue — a small `AlertCircle` indicator next to the status badge for any invoice with a failed last email-publish. Tooltip: "Email failed to send to this client". On rows that were sent via email but the email failed, the failed indicator replaces (does not stack with) the sent-method icon.
+- [x] Source the failed-email state from the new `invoice_email_summary` view.
 
 **Out of scope (deferred)**
 - **Editing `client_email` post-publish + retrying email**. Requires careful auditing of identity changes and re-enable semantics. Likely a v1.5 / v1.6 branch.
-- Bounce / complaint webhooks from Resend feeding back into `email_events.status` automatically. Currently we only know send-time `status=sent` vs `status=failed`. Resend's webhook for bounces (post-send-but-undeliverable) could update the same row to `status=bounced` — useful but separable.
+- Bounce / complaint webhooks from Resend feeding back into `email_events.status` automatically. Currently we only know send-time `status=sent` vs `status=failed`. Resend's webhook for bounces (post-send-but-undeliverable) could update the same row to `status=bounced` — useful but separable. The view structure is already compatible.
 
 **Tests**
-- [ ] Detail-page test: invoice with last email-publish failed → alert renders with the reason.
-- [ ] Detail-page test: invoice with last email-publish sent → no alert.
-- [ ] Detail-page test: invoice with no email attempted (manual-only delivery, or publish-only) → no alert.
-- [ ] List-page test: filter "Email failed" hides invoices whose last attempt was successful and shows ones whose last attempt failed.
+- [x] List-page test: per-row indicator renders for failed-publish rows and is absent on successful rows.
+- [x] List-page test: failed indicator replaces (does not stack with) the sent-via-email icon on a row that was sent via email but failed.
 
-**Done when:** A failed email is visible at a glance from both the dashboard list and the detail page, without the owner having to expand the email-events activity card.
+**Done when:** A failed email is visible at a glance from the dashboard list, without the owner having to open the detail page or expand the email-events activity card.
 
 ---
 
@@ -1144,6 +1146,53 @@ alter table invoices add column paid_at timestamptz;
 - [ ] Email smoke: publish a test invoice, confirm the subject line and body read "SatSend".
 
 **Done when:** `grep -ril "paybitty" src/ app/ docs/ *.md *.json` returns zero matches (or only intentionally-preserved history entries in `CHANGELOG.md`); the visible product — UI, emails, PDFs, page titles, nav — reads "SatSend" everywhere.
+
+---
+
+### ⏳ v1.4.16 — Invoice Number Character Limit
+
+**Branch:** `v1.4.16/invoice-number-char-limit`
+
+**Context:** The invoice number field on the form (`/invoices/new` and `/invoices/[id]/edit`) is currently unbounded. Long values blow out table column widths on `/invoices`, wrap awkwardly on the public invoice page, and produce ugly subject lines in `invoice_published` emails ("Invoice ABCDEFGHIJKLMNOPQRSTUVWXYZ-2026-04-29-FOLLOWUP-V2 from …"). Cap at **30 characters** across the whole pipeline.
+
+**Scope**
+- [ ] DB-level constraint — migration `00XX_invoice_number_length.sql` adding a `CHECK (char_length(invoice_number) <= 30)` constraint to `invoices.invoice_number`. Audit existing rows first; if any are over 30 chars (`select id, invoice_number from invoices where char_length(invoice_number) > 30`), decide whether to truncate or reject the migration — most likely truncate with a `update` statement in the migration body, since the existing UI never enforced a limit and any over-length values are user-generated. Document the truncation policy in the migration comment.
+- [ ] Form-level enforcement — `<Input maxLength={30}>` on the invoice-number field in `InvoiceForm` (`src/components/invoice-form.tsx` or wherever the field lives), plus a Zod / runtime check in the server actions (`createInvoice`, `updateInvoice`) returning a structured error if exceeded.
+- [ ] Helper text — the form should show a small character counter or hint ("Max 30 characters") so the limit is discoverable, not a surprise.
+- [ ] Audit display sites — confirm the table column, public invoice page, PDF, and all three email templates render cleanly with a 30-char value (no overflow, no clipping).
+
+**Tests**
+- [ ] Unit/integration test on the server action: passing a 31-char invoice number returns a validation error, 30-char passes.
+- [ ] Form test: typing past 30 characters is blocked by `maxLength`.
+- [ ] DB-level test (or manual): inserting a 31-char value via SQL is rejected by the CHECK constraint.
+
+**Done when:** No code path — UI form, server action, or direct DB insert — accepts an invoice number longer than 30 characters.
+
+---
+
+### ⏳ v1.4.17 — Invoices Pagination State Preserved on Navigate-Away
+
+**Branch:** `v1.4.17/invoices-pagination-state`
+
+**Context (bug):** `/invoices` paginates server-side (TanStack `getPaginationRowModel`). If the owner is on page 3 of their invoices, opens an invoice (`/invoices/[id]`), and clicks "← Invoices" to return, the list resets to page 1. They have to navigate forward again to get back to where they were. Same problem if they navigate away and come back via the browser back button or the nav.
+
+**Likely cause:** pagination state lives only in `useState` inside `InvoiceDataTable`. It's never reflected in the URL or persisted across mount/unmount, so the component re-mounts fresh on return.
+
+**Scope**
+- [ ] Choose a persistence approach. Options:
+  - **URL search param (`?page=3`)** — simplest, shareable, plays well with App Router's `useSearchParams`. Preferred unless there's a strong reason against.
+  - `sessionStorage` — survives navigation but not a hard refresh, and not URL-shareable. Reject.
+  - Server-side pagination via Next.js search params — bigger lift; only if URL-param refactor is needed anyway.
+- [ ] Wire up `useSearchParams` + `router.replace(?page=N)` in `data-table.tsx` so pagination changes update the URL, and initial state reads from the URL.
+- [ ] Verify the same approach handles other transient state worth preserving on navigate-away — global filter (search box), archive toggle, sort. Decide per piece of state; the bug report is about pagination specifically but the fix is most coherent if applied consistently.
+- [ ] Verify TanStack `pagination.pageIndex` ↔ URL stays in sync without infinite re-render loops.
+
+**Tests**
+- [ ] Component test: rendering `InvoiceDataTable` with `?page=2` initial route lands on page 2.
+- [ ] Component test: clicking "Next" updates `?page=2` in the URL (mock `router.replace`).
+- [ ] Manual test: navigate to page 3, open an invoice, click back, confirm still on page 3.
+
+**Done when:** the dashboard pagination position is preserved across forward-and-back navigation, hard refresh, and direct URL-share, with the URL reflecting the current page.
 
 ---
 

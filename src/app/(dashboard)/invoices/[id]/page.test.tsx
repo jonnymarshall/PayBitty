@@ -27,12 +27,12 @@ const BASE_INVOICE = {
   btc_txid: null,
   status: "pending",
   access_code: null,
-  due_date: "2026-05-15",
+  due_date: "2026-05-15" as string | null,
   created_at: "2026-04-15T12:00:00Z",
   updated_at: "2026-04-15T12:00:00Z",
 };
 
-function makeSupabaseMock(invoiceData: Omit<typeof BASE_INVOICE, "due_date"> & { due_date: string | null }) {
+function makeSupabaseMock(invoiceData: typeof BASE_INVOICE) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }),
@@ -78,3 +78,4 @@ describe("InvoiceDetailPage — dates", () => {
     expect(screen.getByText(/no due date/i)).toBeInTheDocument();
   });
 });
+

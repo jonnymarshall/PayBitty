@@ -29,6 +29,8 @@ const baseRow = {
   sent_at: null,
   send_method: null,
   email_attempted_at: null,
+  last_publish_email_status: null,
+  last_publish_email_error: null,
 };
 
 const MOCK_INVOICES: InvoiceRow[] = [
@@ -337,6 +339,58 @@ describe("InvoiceDataTable — per-row actions", () => {
     fireEvent.click(openMenuButtons[0]); // inv-1 draft
     expect(await screen.findByRole("menuitem", { name: /^edit$/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /download pdf/i })).not.toBeInTheDocument();
+  });
+
+  it("renders an email-failed indicator next to the status badge for rows whose last invoice_published email_event is failed", () => {
+    const data: InvoiceRow[] = [
+      {
+        ...baseRow,
+        id: "inv-failed",
+        invoice_number: "INV-F",
+        client_name: "Failed Co",
+        total_fiat: 100,
+        currency: "USD",
+        status: "pending",
+        due_date: null,
+        created_at: "2026-04-19T12:00:00Z",
+        sent_at: null,
+        send_method: null,
+        email_attempted_at: "2026-04-19T12:00:00Z",
+        last_publish_email_status: "failed",
+        last_publish_email_error: "Resend bounce",
+      },
+    ];
+    render(<InvoiceDataTable data={data} userId="u1" />);
+    expect(screen.getByLabelText(/email failed to send to this client/i)).toBeInTheDocument();
+  });
+
+  it("does not render the email-failed indicator on rows whose last publish email succeeded", () => {
+    render(<InvoiceDataTable data={MOCK_INVOICES} userId="u1" />);
+    expect(screen.queryByLabelText(/email failed to send to this client/i)).not.toBeInTheDocument();
+  });
+
+  it("shows only the email-failed indicator (not the sent-via-email icon) on a row that was sent via email but the email failed", () => {
+    const data: InvoiceRow[] = [
+      {
+        ...baseRow,
+        id: "inv-failed-email",
+        invoice_number: "INV-FE",
+        client_name: "Failed Email Co",
+        total_fiat: 100,
+        currency: "USD",
+        status: "pending",
+        due_date: null,
+        created_at: "2026-04-19T12:00:00Z",
+        sent_at: "2026-04-19T12:00:00Z",
+        send_method: "email",
+        email_attempted_at: "2026-04-19T12:00:00Z",
+        last_publish_email_status: "failed",
+        last_publish_email_error: "Resend bounce",
+      },
+    ];
+    render(<InvoiceDataTable data={data} userId="u1" />);
+    expect(screen.getByLabelText(/email failed to send to this client/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/sent via email/i)).not.toBeInTheDocument();
   });
 
   it("shows 'Mark as overdue' on pending rows and calls markOverdue when clicked", async () => {
