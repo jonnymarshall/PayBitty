@@ -117,7 +117,28 @@ export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
   return data;
 }
 
-export async function publishInvoice(invoiceId: string) {
+type Invoice = Record<string, unknown> & {
+  id: string;
+  user_id: string;
+  status: string;
+  accepts_bitcoin: boolean;
+  btc_address: string | null;
+  client_email: string | null;
+  client_name: string | null;
+  your_name: string | null;
+  your_company: string | null;
+  your_email: string | null;
+  invoice_number: string | null;
+  total_fiat: number;
+  currency: string;
+  access_code: string | null;
+  due_date: string | null;
+};
+
+async function loadAndAuthorise(invoiceId: string): Promise<{
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  invoice: Invoice;
+}> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -150,37 +171,87 @@ export async function publishInvoice(invoiceId: string) {
     }
   }
 
+  return { supabase, invoice: invoice as Invoice };
+}
+
+const publishStatePatch = () => ({
+  status: "pending",
+  next_check_at: new Date(Date.now() + 60_000).toISOString(),
+  stage_attempt: 0,
+  mempool_seen_at: null,
+});
+
+async function applyPublishUpdate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  invoiceId: string,
+  extra: Record<string, unknown>,
+) {
   const { error } = await supabase
     .from("invoices")
-    .update({
-      status: "pending",
-      next_check_at: new Date(Date.now() + 60_000).toISOString(),
-      stage_attempt: 0,
-      mempool_seen_at: null,
-    })
+    .update({ ...publishStatePatch(), ...extra })
     .eq("id", invoiceId);
-
   if (error) throw new Error(error.message);
-
-  if (invoice.client_email) {
-    await sendInvoicePublishedEmail({
-      to: invoice.client_email,
-      userId: invoice.user_id,
-      senderName: invoice.your_name || invoice.your_company || invoice.your_email || "Paybitty user",
-      clientName: invoice.client_name || "there",
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.invoice_number,
-      totalFiat: invoice.total_fiat,
-      currency: invoice.currency,
-      accessCode: invoice.access_code,
-      dueDateDisplay: invoice.due_date
-        ? format(new Date(invoice.due_date + "T12:00:00"), "MMMM d, yyyy")
-        : null,
-    });
-  }
 
   revalidatePath("/dashboard");
   revalidatePath(`/invoices/${invoiceId}`);
+}
+
+export async function publishInvoice(invoiceId: string) {
+  const { supabase } = await loadAndAuthorise(invoiceId);
+  await applyPublishUpdate(supabase, invoiceId, {});
+}
+
+export async function publishAndSendEmail(
+  invoiceId: string,
+): Promise<{ emailStatus: "sent" | "failed" | "skipped_no_api_key" | "no_recipient" }> {
+  const { supabase, invoice } = await loadAndAuthorise(invoiceId);
+
+  if (!invoice.client_email) {
+    // Nothing to send to — fall back to publish-only semantics.
+    await applyPublishUpdate(supabase, invoiceId, {});
+    return { emailStatus: "no_recipient" };
+  }
+
+  const attemptAt = new Date().toISOString();
+  const outcome = await sendInvoicePublishedEmail({
+    to: invoice.client_email,
+    userId: invoice.user_id,
+    senderName: invoice.your_name || invoice.your_company || invoice.your_email || "Paybitty user",
+    clientName: invoice.client_name || "there",
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoice_number,
+    totalFiat: invoice.total_fiat,
+    currency: invoice.currency,
+    accessCode: invoice.access_code,
+    dueDateDisplay: invoice.due_date
+      ? format(new Date(invoice.due_date + "T12:00:00"), "MMMM d, yyyy")
+      : null,
+  });
+
+  const succeeded = outcome.status === "sent";
+  await applyPublishUpdate(supabase, invoiceId, {
+    sent_at: succeeded ? attemptAt : null,
+    send_method: succeeded ? "email" : null,
+    email_attempted_at: attemptAt,
+  });
+
+  return { emailStatus: outcome.status };
+}
+
+export async function publishAndMarkSent(
+  invoiceId: string,
+  opts: { withDownload?: boolean } = {},
+): Promise<{ downloadUrl: string } | undefined> {
+  const { supabase } = await loadAndAuthorise(invoiceId);
+
+  await applyPublishUpdate(supabase, invoiceId, {
+    sent_at: new Date().toISOString(),
+    send_method: "manual",
+  });
+
+  if (opts.withDownload) {
+    return { downloadUrl: `/api/invoices/${invoiceId}/pdf` };
+  }
 }
 
 export async function markPaid(invoiceId: string) {

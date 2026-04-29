@@ -3,29 +3,51 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { deleteDraft, duplicateInvoice, markOverdue, markPaid, markUnpaid, publishInvoice } from "../actions";
+import { PublishMenu } from "@/components/publish-menu";
+import {
+  deleteDraft,
+  duplicateInvoice,
+  markOverdue,
+  markPaid,
+  markUnpaid,
+  publishInvoice,
+  publishAndSendEmail,
+  publishAndMarkSent,
+} from "../actions";
 import { bulkArchive, bulkDelete, bulkUnarchive } from "../bulk-actions";
 import { parseServerError } from "@/lib/invoices";
 
 interface Invoice {
   id: string;
   status: string;
+  client_email?: string | null;
+  sent_at?: string | null;
+  send_method?: "email" | "manual" | null;
+  email_attempted_at?: string | null;
 }
 
 export function InvoiceActions({ invoice }: { invoice: Invoice }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const isDraft = invoice.status === "draft";
   const isArchived = invoice.status === "archived";
   const isPaid = invoice.status === "paid";
   const canMarkPaid = !isDraft && !isArchived && !isPaid;
+  // Hide the publish/send trigger only when truly nothing remains to do — i.e., the invoice
+  // has both been marked sent AND had an email attempt. Until then keep the menu reachable
+  // (even with no client_email — the "Send via email" item explains via tooltip).
+  const allSendActionsDone = !!invoice.sent_at && !!invoice.email_attempted_at;
+  const canShowPublishMenu = isDraft || (!isArchived && !allSendActionsDone);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await fn();
       router.refresh();
@@ -50,9 +72,38 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
     }
   }
 
+  const deliveryLine =
+    invoice.sent_at && invoice.send_method
+      ? invoice.send_method === "email"
+        ? `Sent via email on ${format(new Date(invoice.sent_at), "MMM d, yyyy")}`
+        : `Marked as sent on ${format(new Date(invoice.sent_at), "MMM d, yyyy")}`
+      : null;
+
   return (
     <div id="invoice-actions" className="space-y-3 pb-8">
-      {error && <p id="invoice-actions--error" className="text-sm text-primary">{error}</p>}
+      {error && (
+        <div
+          id="invoice-actions--error"
+          role="alert"
+          className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400"
+        >
+          {error}
+        </div>
+      )}
+      {notice && (
+        <div
+          id="invoice-actions--notice"
+          role="status"
+          className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400"
+        >
+          {notice}
+        </div>
+      )}
+      {deliveryLine && (
+        <p id="invoice-actions--delivery-status" className="text-sm text-muted-foreground">
+          {deliveryLine}
+        </p>
+      )}
       <div id="invoice-actions--buttons" className="flex gap-3 flex-wrap">
         {isDraft && (
           <Link href={`/invoices/${invoice.id}/edit`}>
@@ -72,14 +123,50 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
           </a>
         )}
 
-        {isDraft && (
-          <Button
-            id="invoice-actions--mark-sent-button"
-            onClick={() => run(() => publishInvoice(invoice.id))}
-            disabled={busy}
-          >
-            Mark as sent
-          </Button>
+        {canShowPublishMenu && (
+          <PublishMenu
+            invoiceId={invoice.id}
+            isDraft={isDraft}
+            emailAttemptedAt={invoice.email_attempted_at ?? null}
+            clientEmail={invoice.client_email ?? null}
+            sentAt={invoice.sent_at ?? null}
+            sendMethod={invoice.send_method ?? null}
+            busy={busy}
+            onSendEmail={(id) =>
+              run(async () => {
+                const result = await publishAndSendEmail(id);
+                if (result.emailStatus === "sent") {
+                  setNotice(
+                    invoice.client_email
+                      ? `Email queued for delivery to ${invoice.client_email}. See the Email Activity log for the delivery status.`
+                      : "Email queued for delivery. See the Email Activity log for the delivery status."
+                  );
+                } else if (result.emailStatus === "failed") {
+                  setError(
+                    "Email delivery failed at the provider. The invoice has been published; see the Email Activity log for the error message."
+                  );
+                } else if (result.emailStatus === "skipped_no_api_key") {
+                  setError(
+                    "Email skipped: the email provider isn't configured (RESEND_API_KEY is missing). The invoice has been published — use 'Mark as sent' to record manual delivery."
+                  );
+                } else if (result.emailStatus === "no_recipient") {
+                  setError(
+                    "Email skipped: no client email is set on this invoice. The invoice has been published — use 'Mark as sent' to record manual delivery."
+                  );
+                }
+              })
+            }
+            onMarkSent={(id) => run(() => publishAndMarkSent(id))}
+            onDownloadAndMarkSent={(id) =>
+              run(async () => {
+                const result = await publishAndMarkSent(id, { withDownload: true });
+                if (result?.downloadUrl && typeof window !== "undefined") {
+                  window.location.href = result.downloadUrl;
+                }
+              })
+            }
+            onPublishOnly={(id) => run(() => publishInvoice(id))}
+          />
         )}
 
         {canMarkPaid && (

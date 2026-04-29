@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] - 2026-04-29
+
+### Added
+- **Publish vs Send-via-email split.** Publishing an invoice (creating its public URL) is now decoupled from sending it via email. Owners get a split-button menu with four options for drafts: Send now via email, Download and mark as sent, Mark as sent, or Publish only. New `sent_at`, `send_method`, and `email_attempted_at` columns on `invoices` track delivery state without polluting the payment-status enum.
+- **Send menu is state-aware.** It only shows actions still useful for the invoice's current state — once both `sent_at` and `email_attempted_at` are set the trigger is hidden entirely. After a manual mark-as-sent, only "Send now via email" remains in the menu (the manual options are no-ops once `sent_at` is set; the existing "Download PDF" affordance covers that path). The menu stays visible after a manual mark-as-sent even when `client_email` is empty so the user can see why "Send via email" is unavailable. "Send via email" is permanently disabled once an email attempt has been made (success or failure) — re-attempts are out of scope until `client_email` editing is supported.
+- **Delivery indicators.** The detail page shows a "Sent via email on …" or "Marked as sent on …" line under the status badge; the `/invoices` Status column gets a small mail/hand icon next to the badge for at-a-glance method recognition.
+- **Post-action feedback banners.** After "Send now via email" the detail page surfaces a green status banner ("Email queued for delivery to …") on Resend acceptance, and a red error banner on a Resend-side failure / missing API key / missing recipient. Replaces the previous easy-to-miss single-line text.
+- **Publish/send menu on the new- and edit-invoice forms.** Replaces the single "Publish invoice" button on `/invoices/new` and `/invoices/[id]/edit` with the same `<PublishMenu>` split-button used on the detail page — same four draft options (Send via email, Download and mark as sent, Mark as sent, Publish only), same `client_email` gating. Each option saves/updates the draft first, then runs the chosen publish action and navigates to the detail page.
+
+### Known limitation
+
+- **Email Activity "Sent" = Resend-accepted, not inbox-confirmed.** When the activity card shows a `Sent` badge, it means the Resend API accepted the request — the email may still bounce later (invalid recipient, spam-block, etc.) and we won't know without a Resend webhook subscription. Resend webhooks are tracked as a separate follow-on (out of scope for v1.4.8 and v1.4.9).
+
 ## [1.4.7] - 2026-04-28
 
 ### Added

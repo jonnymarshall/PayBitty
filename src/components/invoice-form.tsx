@@ -4,7 +4,15 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/date-picker";
-import { saveDraft, updateDraft, publishInvoice, InvoicePayload } from "@/app/(dashboard)/invoices/actions";
+import {
+  saveDraft,
+  updateDraft,
+  publishInvoice,
+  publishAndSendEmail,
+  publishAndMarkSent,
+  InvoicePayload,
+} from "@/app/(dashboard)/invoices/actions";
+import { PublishMenu } from "@/components/publish-menu";
 import { computeInvoiceTotals, isValidEmail, isValidBtcAddress, parseServerError, LineItem } from "@/lib/invoices";
 import {
   DndContext,
@@ -233,7 +241,9 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
     }
   }
 
-  async function handlePublish() {
+  // Shared flow for all four publish/send options. Saves/updates the draft to obtain
+  // an id, then runs the chosen publish action against that id, then navigates.
+  async function runPublishFlow<T>(action: (id: string) => Promise<T>, postNavigate?: (result: T) => void) {
     if (!validate()) return;
     setSaving(true);
     try {
@@ -245,8 +255,9 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
         const invoice = await saveDraft(payload);
         id = invoice.id;
       }
-      await publishInvoice(id!);
+      const result = await action(id!);
       router.push(`/invoices/${id}`);
+      postNavigate?.(result);
     } catch (e) {
       const { field, message } = parseServerError((e as Error).message);
       if (field && field in errorFieldIds) {
@@ -259,6 +270,19 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
       setSaving(false);
     }
   }
+
+  const handlePublishOnly = () => runPublishFlow((id) => publishInvoice(id));
+  const handleSendEmail = () => runPublishFlow((id) => publishAndSendEmail(id));
+  const handleMarkSent = () => runPublishFlow((id) => publishAndMarkSent(id));
+  const handleDownloadAndMarkSent = () =>
+    runPublishFlow(
+      (id) => publishAndMarkSent(id, { withDownload: true }),
+      (result) => {
+        if (result?.downloadUrl && typeof window !== "undefined") {
+          window.location.href = result.downloadUrl;
+        }
+      }
+    );
 
   const taxPct = parseFloat(form.tax_percent) || 0;
   const { subtotal, taxFiat, total } = computeInvoiceTotals(form.line_items, taxPct);
@@ -498,13 +522,23 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
         </div>
       </div>
 
-      <div id="section-actions" className="flex gap-3">
+      <div id="section-actions" className="flex gap-3 items-start">
         <Button id="btn-save-draft" variant="outline" onClick={handleSaveDraft} disabled={saving}>
           Save draft
         </Button>
-        <Button id="btn-publish" onClick={handlePublish} disabled={saving}>
-          Publish invoice
-        </Button>
+        <PublishMenu
+          invoiceId={invoiceId ?? "new"}
+          isDraft
+          emailAttemptedAt={null}
+          clientEmail={form.client_email || null}
+          sentAt={null}
+          sendMethod={null}
+          busy={saving}
+          onSendEmail={handleSendEmail}
+          onMarkSent={handleMarkSent}
+          onDownloadAndMarkSent={handleDownloadAndMarkSent}
+          onPublishOnly={handlePublishOnly}
+        />
         <Button id="btn-cancel" variant="outline" type="button" onClick={handleCancel} disabled={saving}>
           Cancel
         </Button>

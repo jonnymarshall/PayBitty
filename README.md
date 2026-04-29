@@ -212,6 +212,42 @@ File: `src/app/invoice/[id]/use-public-invoice-realtime.ts`
 
 ---
 
+## Publishing and sending an invoice
+
+Publishing an invoice (creating its public URL) is **decoupled** from sending it via email. The owner picks how delivery should happen via a single split-button menu on the invoice detail page and the `/invoices` per-row dropdown.
+
+Three columns on `invoices` capture delivery state without polluting the payment-status enum (which stays focused on `pending → payment_detected → paid`):
+
+- `sent_at` — non-null once the invoice has been "delivered" (manually or via successful email).
+- `send_method` — `'email'` or `'manual'`; non-null when `sent_at` is set.
+- `email_attempted_at` — set the moment a `safeSend` for `type=invoice_published` is fired, regardless of outcome. Used to gate the "Send via email" option.
+
+The menu shows only actions that are still useful for the invoice's current state:
+
+| State | Trigger | Menu options |
+|---|---|---|
+| Draft | **Publish** | Send via email · Download and mark as sent · Mark as sent · Publish only |
+| Published-only (`sent_at` NULL) | **Send** | Send via email · Download and mark as sent · Mark as sent |
+| Manually-marked-sent (`sent_at` set, `email_attempted_at` NULL) | **Send** | Send via email *(only — disabled with tooltip if no `client_email`)* |
+| Email attempted but failed (`email_attempted_at` set, `sent_at` NULL) | **Send** | Send via email *(disabled)* · Download and mark as sent · Mark as sent |
+| Successfully delivered via email (`sent_at` + `email_attempted_at` both set) | (hidden) | — |
+| Manually sent + email attempted (both set) | (hidden) | — |
+| Archived | (hidden) | — |
+
+Notes:
+- Once `email_attempted_at` is set, "Send via email" is permanently disabled with a tooltip — re-attempts would hit the same `client_email`, which is currently immutable post-publish.
+- After a manual mark-as-sent the manual options ("Mark as sent", "Download and mark as sent") drop out because they are no-ops; the existing **Download PDF** button on the detail page / row dropdown handles that affordance.
+- The `Send` trigger disappears entirely once *every* path is a no-op (both `sent_at` *and* `email_attempted_at` set).
+- "Sent" in the **Email Activity** card means **Resend accepted the request**, not that the recipient inbox confirmed receipt. Bounces / spam-blocks that occur post-acceptance are not currently surfaced — that needs a Resend webhook subscription (out of scope for v1.4.8 / v1.4.9).
+
+Three server actions back the menu (`src/app/(dashboard)/invoices/actions.ts`):
+
+- `publishInvoice(id)` — publish only, no delivery side-effect.
+- `publishAndSendEmail(id)` — publish + fire `invoice-published` email; returns `{ emailStatus }` so the UI can show success/failure.
+- `publishAndMarkSent(id, { withDownload? })` — publish + record manual delivery. With `withDownload: true`, returns `{ downloadUrl }` so the client triggers the existing `/api/invoices/[id]/pdf` route.
+
+---
+
 ## Email notifications
 
 All transactional email goes through **Resend** via `src/lib/email/send.ts`. There are three email types, three triggers, and two recipient types.
@@ -222,7 +258,7 @@ All transactional email goes through **Resend** via `src/lib/email/send.ts`. The
 
 | # | Email                 | Fires when…                                     | Callsite (server)                                        | Recipients                          |
 |---|-----------------------|-------------------------------------------------|----------------------------------------------------------|-------------------------------------|
-| 1 | **Invoice published** | `publishInvoice` flips a draft → `pending`      | `src/app/(dashboard)/invoices/actions.ts` → `publishInvoice` | Payer (`client_email`)              |
+| 1 | **Invoice published** | Owner picks "Send now via email" from the publish/send menu | `src/app/(dashboard)/invoices/actions.ts` → `publishAndSendEmail` | Payer (`client_email`)              |
 | 2 | **Payment detected**  | Status transitions → `payment_detected`         | `src/app/api/invoices/[id]/payment-status/route.ts` **or** `src/app/api/cron/payment-sweep/route.ts` | Invoice owner **and** payer (`client_email`) |
 | 3 | **Payment confirmed** | Status transitions → `paid`                     | Same two callsites as above                              | Invoice owner **and** payer (`client_email`) |
 

@@ -112,14 +112,36 @@ describe("safeSend (via sendInvoicePublishedEmail)", () => {
     expect(String(updatedRow.error_message)).toMatch(/Recipient blocked/);
   });
 
-  it("does not throw when the email_events insert itself errors", async () => {
+  it("does not throw when the email_events insert itself errors; reports failure outcome", async () => {
     mockInsert.mockReturnValueOnce({
       select: () => ({
         single: () => Promise.resolve({ data: null, error: { message: "db down" } }),
       }),
     });
 
-    await expect(sendInvoicePublishedEmail(baseArgs)).resolves.toBeUndefined();
+    const outcome = await sendInvoicePublishedEmail(baseArgs);
+    expect(outcome.status).toBe("failed");
+  });
+
+  it("returns { status: 'sent' } on successful send", async () => {
+    const outcome = await sendInvoicePublishedEmail(baseArgs);
+    expect(outcome).toEqual({ status: "sent" });
+  });
+
+  it("returns { status: 'failed', errorMessage } when Resend errors", async () => {
+    mockResendSend.mockResolvedValueOnce({
+      data: null,
+      error: { name: "validation_error", message: "Recipient blocked" },
+    });
+    const outcome = await sendInvoicePublishedEmail(baseArgs);
+    expect(outcome.status).toBe("failed");
+    expect(outcome.errorMessage).toMatch(/Recipient blocked/);
+  });
+
+  it("returns { status: 'skipped_no_api_key' } when RESEND_API_KEY is missing", async () => {
+    mockGetResend.mockReturnValueOnce(null);
+    const outcome = await sendInvoicePublishedEmail(baseArgs);
+    expect(outcome).toEqual({ status: "skipped_no_api_key" });
   });
 });
 
