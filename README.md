@@ -238,7 +238,7 @@ Notes:
 - Once `email_attempted_at` is set, "Send via email" is permanently disabled with a tooltip — re-attempts would hit the same `client_email`, which is currently immutable post-publish.
 - After a manual mark-as-sent the manual options ("Mark as sent", "Download and mark as sent") drop out because they are no-ops; the existing **Download PDF** button on the detail page / row dropdown handles that affordance.
 - The `Send` trigger disappears entirely once *every* path is a no-op (both `sent_at` *and* `email_attempted_at` set).
-- "Sent" in the **Email Activity** card means **Resend accepted the request**, not that the recipient inbox confirmed receipt. Bounces / spam-blocks that occur post-acceptance are not currently surfaced — that needs a Resend webhook subscription (out of scope for v1.4.8 / v1.4.9).
+- "Sent" in the **Email Activity** card means **Resend accepted the request**, not that the recipient inbox confirmed receipt. Bounces / spam-blocks that occur post-acceptance are not currently surfaced — that needs a Resend webhook subscription, tracked in `development/ROADMAP.md` as **v1.4.18 — Resend Webhook: Sent vs Delivered vs Bounced**.
 
 Three server actions back the menu (`src/app/(dashboard)/invoices/actions.ts`):
 
