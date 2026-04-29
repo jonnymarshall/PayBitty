@@ -326,6 +326,13 @@ export async function markUnpaid(invoiceId: string) {
     .eq("id", invoiceId);
 
   if (error) throw new Error(error.message);
+
+  await logInvoiceEvent({
+    invoiceId,
+    userId: invoice.user_id,
+    eventType: "marked_as_unpaid",
+  });
+
   revalidatePath("/dashboard");
   revalidatePath(`/invoices/${invoiceId}`);
 }

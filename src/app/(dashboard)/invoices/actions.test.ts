@@ -18,6 +18,7 @@ import {
   publishAndSendEmail,
   publishAndMarkSent,
   markPaid,
+  markUnpaid,
   deleteDraft,
   markOverdue,
   duplicateInvoice,
@@ -315,6 +316,27 @@ describe("markPaid", () => {
       invoiceId: "inv-1",
       userId: "user-1",
       eventType: "marked_as_paid",
+    });
+  });
+});
+
+describe("markUnpaid", () => {
+  it("sets status to pending on a paid invoice", async () => {
+    const { updateChain } = makeSupabase({
+      fetchData: { id: "inv-1", status: "paid", user_id: "user-1" },
+    });
+    await markUnpaid("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+  });
+
+  it("logs a marked_as_unpaid invoice_events row", async () => {
+    makeSupabase({ fetchData: { id: "inv-1", status: "paid", user_id: "user-1" } });
+    await markUnpaid("inv-1");
+    expect(logInvoiceEvent).toHaveBeenCalledWith({
+      invoiceId: "inv-1",
+      userId: "user-1",
+      eventType: "marked_as_unpaid",
     });
   });
 });

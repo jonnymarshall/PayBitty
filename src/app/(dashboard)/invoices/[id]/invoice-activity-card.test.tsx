@@ -17,7 +17,7 @@ interface EmailRow {
 
 interface InvoiceEventRow {
   id: string;
-  event_type: "marked_as_sent" | "marked_as_paid" | "marked_as_overdue";
+  event_type: "marked_as_sent" | "marked_as_paid" | "marked_as_overdue" | "marked_as_unpaid";
   created_at: string;
 }
 
@@ -89,12 +89,14 @@ describe("InvoiceActivityCard", () => {
         { id: "i1", event_type: "marked_as_sent", created_at: "2026-04-15T11:00:00Z" },
         { id: "i2", event_type: "marked_as_paid", created_at: "2026-04-15T12:00:00Z" },
         { id: "i3", event_type: "marked_as_overdue", created_at: "2026-04-15T13:00:00Z" },
+        { id: "i4", event_type: "marked_as_unpaid", created_at: "2026-04-15T14:00:00Z" },
       ],
     });
     render(await InvoiceActivityCard({ invoiceId: "inv-1" }));
     expect(screen.getByText(/marked as sent/i)).toBeInTheDocument();
     expect(screen.getByText(/marked as paid/i)).toBeInTheDocument();
     expect(screen.getByText(/marked as overdue/i)).toBeInTheDocument();
+    expect(screen.getByText(/marked as unpaid/i)).toBeInTheDocument();
   });
 
   it("merges email and manual events ordered most-recent-first", async () => {
@@ -132,6 +134,7 @@ describe("InvoiceActivityCard", () => {
         { id: "i1", event_type: "marked_as_sent", created_at: "2026-04-15T11:00:00Z" },
         { id: "i2", event_type: "marked_as_paid", created_at: "2026-04-15T12:00:00Z" },
         { id: "i3", event_type: "marked_as_overdue", created_at: "2026-04-15T13:00:00Z" },
+        { id: "i4", event_type: "marked_as_unpaid", created_at: "2026-04-15T14:00:00Z" },
       ],
     });
     const { container } = render(await InvoiceActivityCard({ invoiceId: "inv-1" }));
@@ -140,5 +143,6 @@ describe("InvoiceActivityCard", () => {
     expect(container.querySelector('[data-icon="send"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="check-circle"]')).not.toBeNull();
     expect(container.querySelector('[data-icon="clock"]')).not.toBeNull();
+    expect(container.querySelector('[data-icon="rotate-ccw"]')).not.toBeNull();
   });
 });

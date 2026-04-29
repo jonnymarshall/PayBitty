@@ -3,7 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export type InvoiceEventType =
   | "marked_as_sent"
   | "marked_as_paid"
-  | "marked_as_overdue";
+  | "marked_as_overdue"
+  | "marked_as_unpaid";
 
 export interface LogInvoiceEventArgs {
   invoiceId: string;
