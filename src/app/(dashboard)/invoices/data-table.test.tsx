@@ -16,13 +16,14 @@ vi.mock("./actions", () => ({
   publishAndMarkSent: vi.fn().mockResolvedValue(undefined),
   duplicateInvoice: vi.fn().mockResolvedValue(undefined),
   markOverdue: vi.fn().mockResolvedValue(undefined),
+  markUnpaid: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./use-invoice-realtime", () => ({
   useInvoiceRealtime: vi.fn(),
 }));
 
 import { bulkArchive, bulkDelete, bulkMarkPaid, bulkUnarchive } from "./bulk-actions";
-import { publishInvoice, publishAndSendEmail, publishAndMarkSent, duplicateInvoice, markOverdue } from "./actions";
+import { publishInvoice, publishAndSendEmail, publishAndMarkSent, duplicateInvoice, markOverdue, markUnpaid } from "./actions";
 
 const baseRow = {
   client_email: "client@example.com",
@@ -35,7 +36,8 @@ const baseRow = {
 
 const MOCK_INVOICES: InvoiceRow[] = [
   { ...baseRow, id: "inv-1", invoice_number: "INV-001", client_name: "Acme", total_fiat: 1000, currency: "USD", status: "draft", due_date: null, created_at: "2026-04-15T12:00:00Z" },
-  { ...baseRow, id: "inv-2", invoice_number: "INV-002", client_name: "Globex", total_fiat: 500, currency: "USD", status: "pending", due_date: "2026-06-01", created_at: "2026-04-16T12:00:00Z", sent_at: "2026-04-16T12:00:00Z", send_method: "email", email_attempted_at: "2026-04-16T12:00:00Z" },
+  // inv-2 covers case #3 (pending, no due date) so the "Mark as overdue" button is available.
+  { ...baseRow, id: "inv-2", invoice_number: "INV-002", client_name: "Globex", total_fiat: 500, currency: "USD", status: "pending", due_date: null, created_at: "2026-04-16T12:00:00Z", sent_at: "2026-04-16T12:00:00Z", send_method: "email", email_attempted_at: "2026-04-16T12:00:00Z" },
   { ...baseRow, id: "inv-3", invoice_number: "INV-003", client_name: "Initech", total_fiat: 250, currency: "USD", status: "paid", due_date: null, created_at: "2026-04-17T12:00:00Z", sent_at: "2026-04-17T12:00:00Z", send_method: "email", email_attempted_at: "2026-04-17T12:00:00Z" },
   { ...baseRow, id: "inv-4", invoice_number: "INV-004", client_name: "Umbrella", total_fiat: 750, currency: "USD", status: "archived", due_date: null, created_at: "2026-04-18T12:00:00Z" },
 ];
@@ -416,5 +418,37 @@ describe("InvoiceDataTable — per-row actions", () => {
     // ensure menu actually opened
     expect(await screen.findByRole("menuitem", { name: /view public invoice/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /mark as overdue/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDataTable — overdue/pending row dropdown (cases #2, #3, #4)", () => {
+  it("case #2: pending + future due date → hides 'Mark as overdue'", async () => {
+    const data: InvoiceRow[] = [
+      { ...baseRow, id: "inv-future", invoice_number: "INV-FUT", client_name: "Future Co", total_fiat: 100, currency: "USD", status: "pending", due_date: "2099-12-31", created_at: "2026-04-20T12:00:00Z" },
+    ];
+    render(<InvoiceDataTable data={data} userId="u1" />);
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    expect(await screen.findByRole("menuitem", { name: /view public invoice/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /mark as overdue/i })).not.toBeInTheDocument();
+  });
+
+  it("case #4: overdue + no due date → shows 'Mark as pending' and calls markUnpaid", async () => {
+    const data: InvoiceRow[] = [
+      { ...baseRow, id: "inv-od", invoice_number: "INV-OD", client_name: "Late Co", total_fiat: 100, currency: "USD", status: "overdue", due_date: null, created_at: "2026-04-20T12:00:00Z" },
+    ];
+    render(<InvoiceDataTable data={data} userId="u1" />);
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /mark as pending/i }));
+    await waitFor(() => expect(markUnpaid).toHaveBeenCalledWith("inv-od"));
+  });
+
+  it("overdue + past due date → hides 'Mark as pending' (cron would re-flip)", async () => {
+    const data: InvoiceRow[] = [
+      { ...baseRow, id: "inv-od2", invoice_number: "INV-OD2", client_name: "Late Co", total_fiat: 100, currency: "USD", status: "overdue", due_date: "2020-01-01", created_at: "2026-04-20T12:00:00Z" },
+    ];
+    render(<InvoiceDataTable data={data} userId="u1" />);
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    expect(await screen.findByRole("menuitem", { name: /view public invoice/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /mark as pending/i })).not.toBeInTheDocument();
   });
 });

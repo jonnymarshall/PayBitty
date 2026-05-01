@@ -962,7 +962,7 @@ All email-related events share **one icon family** (envelope) per the user's pre
 
 ---
 
-### ⏳ v1.4.11 — Overdue Automation
+### ✅ v1.4.11 — Overdue Automation
 
 **Branch:** `v1.4.11/overdue-automation`
 
@@ -975,16 +975,17 @@ All email-related events share **one icon family** (envelope) per the user's pre
 - Case #4 — Invoice has **no due date** and is `overdue` → "Mark as pending" button available (reverses case #3).
 
 **Scope**
-- [ ] Case #1 automation — extend the existing background cron (`/api/cron/payment-sweep`) or add a sibling cron to also flip unpaid `pending` rows with `due_date < now()` to `overdue`. Update `decidePaymentSchedule` or add a second decision fn so the "mark as overdue" write happens alongside / independently of payment polling. Schema: no changes — `overdue` already exists in the status enum.
-- [ ] Alternative considered: a scheduled DB job / trigger doing the status flip without Next.js involvement. Rejected for v1.4 because it splits the source of truth; keeping all state transitions in TypeScript is simpler to test.
-- [ ] Cases #2 / #3 / #4 — conditional rendering of the "Mark as overdue" / "Mark as pending" buttons on both the invoice row dropdown and the detail page, based on `due_date` presence and current status. One source-of-truth helper (e.g. `src/lib/invoices/overdue-actions.ts`) with `canMarkAsOverdue(invoice)` / `canMarkAsPending(invoice)`.
-- [ ] Update the status badge to show "Overdue" when auto-flipped (no code change likely needed — the badge reads from `status` — but visually verify).
-- [ ] Email (maybe) — do we notify the owner on auto-flip? Deferred for this branch. Owner sees it on next dashboard load; Realtime picks it up. Add a note in the "Out of scope" section.
+- [x] Case #1 automation — extended the existing `/api/cron/payment-sweep` route with a sibling sweep (`sweepOverdue` helper) that runs every cron tick. Decision lives in a new pure fn `decideOverdueFlip()` in `src/lib/invoices/overdue-actions.ts`. The flip uses optimistic concurrency (`.eq("status", "pending")`) so a payment landing in the same tick wins. Cron response now includes an `overdueFlips` counter. Activity feed records `marked_as_overdue` (same event type as the manual flow).
+- [x] **Synchronous flip at publish time.** Discovered during dev testing that the cron-only flip leaves freshly published past-due invoices showing as `pending` for up to ~60s in production and indefinitely in dev. Fixed in `applyPublishUpdate` (the chokepoint for `publishInvoice` / `publishAndSendEmail` / `publishAndMarkSent`) by calling `decideOverdueFlip` against the loaded invoice and writing `status='overdue'` directly when applicable.
+- [x] Alternative considered: a scheduled DB job / trigger doing the status flip without Next.js involvement. Rejected for v1.4 because it splits the source of truth; keeping all state transitions in TypeScript is simpler to test.
+- [x] Cases #2 / #3 / #4 — conditional rendering wired through `canMarkAsOverdue(invoice)` / `canMarkAsPending(invoice)` in `src/lib/invoices/overdue-actions.ts`. `MarkAsMenu` (detail page) accepts a new `dueDate` prop and gates Overdue / Pending items via the helper; the row dropdown in `columns.tsx` does the same and adds a new "Mark as pending" item wired to the existing `markUnpaid` action.
+- [x] Status badge shows "Overdue" when auto-flipped — verified, no code change (badge reads from `status`).
+- [x] Email notification on auto-flip — deferred. See "Out of scope" below.
 
 **Tests**
-- [ ] `decidePaymentSchedule` (or new fn) — unit tests for: pending with future due date → no flip; pending with past due date → flip to overdue; payment_detected with past due date → do NOT flip (payment is in flight); no due date → no flip.
-- [ ] Button visibility logic — test the helper for all 4 cases.
-- [ ] Integration-ish test on the cron endpoint — inject a pending invoice with `due_date` 1 minute in the past, run the cron, assert status flips.
+- [x] `decideOverdueFlip` — 7 unit tests covering pending+past, pending+today, pending+future, pending+no-due, payment_detected+past, paid+past, already-overdue+past.
+- [x] Helper visibility logic — 12 unit tests covering all 4 cases plus the paid/draft/already-overdue edge cases.
+- [x] Integration-ish cron test — past-due pending row flips to overdue and logs `marked_as_overdue`; same-day row does not flip; no-rows path returns `overdueFlips: 0`.
 
 **Out of scope**
 - Email notification for auto-overdue flip.
@@ -1305,6 +1306,36 @@ No backfill — existing invoices keep their current `paid` status with NULLs in
 - Multi-currency support beyond the per-invoice `currency` field (v2.4 territory).
 
 **Done when:** A BTC payment of any size resolves to one of `paid` / `paid+overpaid` / `underpaid` based on a 5% tolerance band against the invoice's fiat total at detection time; the actual amount received and the BTC price used for conversion are persisted on the invoice row; the UI surfaces both states clearly; the price-oracle failure mode does not corrupt status.
+
+---
+
+### ⏳ v1.4.20 — Auto Overdue Email Notifications
+
+**Branch:** `v1.4.20/overdue-email-notifications`
+
+**Context:** v1.4.11 made the `pending → overdue` transition automatic (via cron + at publish time) but explicitly deferred the email side: the owner only finds out on the next dashboard load. v1.4.20 closes that loop by sending two emails on the auto-flip — one to the owner, one to the client (where a `client_email` exists).
+
+**Scope**
+- [ ] New email template `payment_overdue_owner` — sent to the owner on every auto-flip from `pending → overdue`. Subject line and copy similar to the existing `payment_detected` template (sender, client, amount, currency, link to invoice). Idempotent: only fires on the actual transition write, not on every cron tick.
+- [ ] New email template `payment_overdue_client` — sent to the client on every auto-flip when `client_email` is non-null. Subject: "Reminder: invoice {INV-N} from {sender} is past due". Body emphasises the invoice link, total, and original due date — non-aggressive tone (this is the first nudge, not a dunning notice).
+- [ ] Wire dispatch into `sweepOverdue` (in `/api/cron/payment-sweep/route.ts`) and into the synchronous publish-time path in `applyPublishUpdate` (in `src/app/(dashboard)/invoices/actions.ts`) — both are state-transition write sites where the flip happens. Use the same `safeSend` deduplication strategy already used for `payment_detected` / `payment_confirmed` so the email cannot fire twice for the same row even if both sites flip in quick succession.
+- [ ] Suppress on `markOverdue` (manual flip) — the owner triggered it, so they don't need notifying; client notification on manual flip is a separate UX call deferred to a later branch.
+- [ ] Surface delivery in the existing Activity feed (`invoice_events` records `marked_as_overdue` already; add a corresponding `email_events` row via the existing `safeSend` pipeline so the activity card shows the send attempt).
+
+**Tests**
+- [ ] Cron-side: past-due pending invoice flips to overdue → both `payment_overdue_owner` and `payment_overdue_client` are dispatched exactly once, with the right `to`, `senderName`, `clientName`, `totalFiat`, `currency`, `dueDate`.
+- [ ] Cron-side: past-due pending invoice with `client_email = null` → only owner email fires.
+- [ ] Cron-side: row that does not flip (future / today / no due date) → no overdue email fires.
+- [ ] Publish-time: publishing a draft with a past due date → flips to overdue AND fires both emails (single transition, single send).
+- [ ] Manual `markOverdue` → no overdue email fires (owner-initiated, suppressed).
+- [ ] Idempotency: a hypothetical second cron tick on the same row (status already `overdue`) → no duplicate email.
+
+**Out of scope**
+- Configurable cadence (e.g. "remind again 7 days after due"). v1.4.20 is one nudge per transition; recurring dunning is a future branch.
+- SMS / WhatsApp client reminders.
+- Per-owner email-template customisation.
+
+**Done when:** When the cron or the publish-time path flips an invoice from `pending` to `overdue`, the owner gets a notification email and the client gets a reminder email (where `client_email` is set), with no duplicates and no email when the owner manually marks the invoice overdue.
 
 ---
 

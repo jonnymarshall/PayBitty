@@ -26,6 +26,11 @@ vi.mock("@/lib/email/send", () => ({
   sendPaymentConfirmedEmail: (...args: unknown[]) => mockSendConfirmed(...args),
 }));
 
+const mockLogInvoiceEvent = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/invoice-events", () => ({
+  logInvoiceEvent: (...args: unknown[]) => mockLogInvoiceEvent(...args),
+}));
+
 async function getRequest(headers: Record<string, string> = {}) {
   const { GET } = await import("./payment-sweep/route");
   const req = new NextRequest("http://localhost/api/cron/payment-sweep", {
@@ -61,6 +66,7 @@ function makeSelectBuilder(rows: unknown[]) {
   builder.eq = chain("eq");
   builder.in = chain("in");
   builder.lte = chain("lte");
+  builder.lt = chain("lt");
   builder.limit = chain("limit");
   builder.not = chain("not");
   builder.then = (onFulfilled: (v: unknown) => unknown) =>
@@ -130,7 +136,7 @@ describe("GET /api/cron/payment-sweep — scope", () => {
     const res = await getRequest(authHeaders());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ processed: 0, transitions: 0, errors: 0 });
+    expect(body).toEqual({ processed: 0, transitions: 0, errors: 0, overdueFlips: 0 });
   });
 });
 
@@ -177,7 +183,7 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
     const res = await getRequest(authHeaders());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ processed: 1, transitions: 1, errors: 0 });
+    expect(body).toEqual({ processed: 1, transitions: 1, errors: 0, overdueFlips: 0 });
 
     expect(update.calls).toHaveLength(1);
     expect(update.calls[0].payload).toMatchObject({
@@ -233,7 +239,7 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
 
     const res = await getRequest(authHeaders());
     const body = await res.json();
-    expect(body).toEqual({ processed: 1, transitions: 1, errors: 0 });
+    expect(body).toEqual({ processed: 1, transitions: 1, errors: 0, overdueFlips: 0 });
 
     expect(mockSendConfirmed).toHaveBeenCalledTimes(1);
     expect(mockSendDetected).not.toHaveBeenCalled();
@@ -247,7 +253,7 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
 
     const res = await getRequest(authHeaders());
     const body = await res.json();
-    expect(body).toEqual({ processed: 1, transitions: 0, errors: 0 });
+    expect(body).toEqual({ processed: 1, transitions: 0, errors: 0, overdueFlips: 0 });
 
     expect(update.calls).toHaveLength(1);
     expect(update.calls[0].payload).toMatchObject({
@@ -274,5 +280,131 @@ describe("GET /api/cron/payment-sweep — per-invoice processing", () => {
     );
     expect(idFilter?.args).toEqual(["id", "inv-1"]);
     expect(statusFilter?.args).toEqual(["status", "pending"]);
+  });
+});
+
+/**
+ * Builder that returns DIFFERENT rows depending on which query path is taken,
+ * so a single supabase mock can serve both the payment-poll select and the
+ * overdue-sweep select on the same `invoices` table.
+ */
+function makeDualSelectBuilder({
+  paymentPollRows,
+  overdueScanRows,
+}: { paymentPollRows: unknown[]; overdueScanRows: unknown[] }) {
+  const updates: Array<{ payload: unknown; filters: Array<{ method: string; args: unknown[] }> }> = [];
+
+  function buildOne() {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const builder: Record<string, unknown> = {};
+    const chain = (method: string) =>
+      vi.fn((...args: unknown[]) => {
+        calls.push({ method, args });
+        return builder;
+      });
+    builder.select = chain("select");
+    builder.eq = chain("eq");
+    builder.in = chain("in");
+    builder.lte = chain("lte");
+    builder.lt = chain("lt");
+    builder.limit = chain("limit");
+    builder.not = chain("not");
+    builder.then = (onFulfilled: (v: unknown) => unknown) => {
+      // The overdue scan filters on `due_date` (via .lt or .not("due_date", ...)).
+      // The payment poll filters on `next_check_at` (via .lte). Discriminate by
+      // which lever was pulled.
+      const isOverdueScan = calls.some(
+        (c) =>
+          (c.method === "lt" && c.args[0] === "due_date") ||
+          (c.method === "not" && c.args[0] === "due_date")
+      );
+      const rows = isOverdueScan ? overdueScanRows : paymentPollRows;
+      return Promise.resolve({ data: rows, error: null }).then(onFulfilled);
+    };
+    builder.update = vi.fn((payload: unknown) => {
+      const filters: Array<{ method: string; args: unknown[] }> = [];
+      const chainable: Record<string, unknown> = {};
+      const filterChain = (method: string) =>
+        vi.fn((...args: unknown[]) => {
+          filters.push({ method, args });
+          return chainable;
+        });
+      chainable.eq = filterChain("eq");
+      chainable.then = (onFulfilled: (v: unknown) => unknown) => {
+        updates.push({ payload, filters });
+        return Promise.resolve({ error: null }).then(onFulfilled);
+      };
+      return chainable;
+    });
+    return builder;
+  }
+
+  return { from: () => buildOne(), updates };
+}
+
+describe("GET /api/cron/payment-sweep — overdue auto-flip (case #1)", () => {
+  it("flips a pending invoice with a past due_date to overdue and logs the event", async () => {
+    const handler = makeDualSelectBuilder({
+      paymentPollRows: [],
+      overdueScanRows: [
+        { id: "inv-od-1", user_id: "owner-7", status: "pending", due_date: "2020-01-01" },
+      ],
+    });
+    mockFrom.mockImplementation(() => handler.from());
+
+    const res = await getRequest(authHeaders());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ overdueFlips: 1 });
+
+    const overdueUpdate = handler.updates.find((u) =>
+      (u.payload as Record<string, unknown>).status === "overdue"
+    );
+    expect(overdueUpdate).toBeDefined();
+    expect(overdueUpdate!.payload).toEqual({ status: "overdue" });
+
+    const idFilter = overdueUpdate!.filters.find((f) => f.method === "eq" && f.args[0] === "id");
+    const statusFilter = overdueUpdate!.filters.find((f) => f.method === "eq" && f.args[0] === "status");
+    expect(idFilter?.args).toEqual(["id", "inv-od-1"]);
+    // Optimistic-concurrency: only flip rows that are still pending.
+    expect(statusFilter?.args).toEqual(["status", "pending"]);
+
+    expect(mockLogInvoiceEvent).toHaveBeenCalledWith({
+      invoiceId: "inv-od-1",
+      userId: "owner-7",
+      eventType: "marked_as_overdue",
+    });
+  });
+
+  it("does NOT flip a pending invoice whose due_date is today (still has the rest of today)", async () => {
+    // The DB filter (`due_date < today`) already excludes today's date, but the
+    // JS decision is the source of truth — verify it ignores edge rows the DB
+    // filter might over-fetch.
+    const handler = makeDualSelectBuilder({
+      paymentPollRows: [],
+      overdueScanRows: [
+        { id: "inv-od-2", user_id: "owner-7", status: "pending", due_date: new Date().toISOString().slice(0, 10) },
+      ],
+    });
+    mockFrom.mockImplementation(() => handler.from());
+
+    const res = await getRequest(authHeaders());
+    const body = await res.json();
+    expect(body).toMatchObject({ overdueFlips: 0 });
+
+    const overdueUpdate = handler.updates.find((u) =>
+      (u.payload as Record<string, unknown>).status === "overdue"
+    );
+    expect(overdueUpdate).toBeUndefined();
+    expect(mockLogInvoiceEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns overdueFlips: 0 when there are no past-due invoices", async () => {
+    const handler = makeDualSelectBuilder({ paymentPollRows: [], overdueScanRows: [] });
+    mockFrom.mockImplementation(() => handler.from());
+
+    const res = await getRequest(authHeaders());
+    const body = await res.json();
+    expect(body).toEqual({ processed: 0, transitions: 0, errors: 0, overdueFlips: 0 });
   });
 });

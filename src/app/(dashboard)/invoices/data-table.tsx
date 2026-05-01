@@ -47,6 +47,7 @@ import {
   publishAndMarkSent,
   duplicateInvoice,
   markOverdue,
+  markUnpaid,
 } from "./actions";
 import { buildColumns, InvoiceRow } from "./columns";
 import { useInvoiceRealtime } from "./use-invoice-realtime";
@@ -113,6 +114,7 @@ export function InvoiceDataTable({ data, userId }: Props) {
           }),
         onMarkPaid: (id) => runRowAction(() => bulkMarkPaid([id])),
         onMarkOverdue: (id) => runRowAction(() => markOverdue(id)),
+        onMarkPending: (id) => runRowAction(() => markUnpaid(id)),
         onArchive: (id) => runRowAction(() => bulkArchive([id])),
         onUnarchive: (id) => runRowAction(() => bulkUnarchive([id])),
         onDelete: (id) => setDeleteTarget([id]),

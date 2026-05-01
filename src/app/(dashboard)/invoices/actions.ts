@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { computeInvoiceTotals, isValidBtcAddress, LineItem } from "@/lib/invoices";
 import { sendInvoicePublishedEmail } from "@/lib/email/send";
 import { logInvoiceEvent } from "@/lib/invoice-events";
+import { decideOverdueFlip } from "@/lib/invoices/overdue-actions";
 
 export interface InvoicePayload {
   invoice_number?: string;
@@ -184,22 +185,39 @@ const publishStatePatch = () => ({
 
 async function applyPublishUpdate(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  invoiceId: string,
+  invoice: Invoice,
   extra: Record<string, unknown>,
 ) {
+  // If the invoice is already past its due date at publish time, flip
+  // straight to overdue so the owner sees the correct status immediately
+  // rather than waiting up to 60s for the cron sweep (and never in dev).
+  const overdue = decideOverdueFlip(
+    { status: "pending", due_date: invoice.due_date },
+    new Date(),
+  );
+  const finalStatus = overdue.shouldFlip ? "overdue" : "pending";
+
   const { error } = await supabase
     .from("invoices")
-    .update({ ...publishStatePatch(), ...extra })
-    .eq("id", invoiceId);
+    .update({ ...publishStatePatch(), ...extra, status: finalStatus })
+    .eq("id", invoice.id);
   if (error) throw new Error(error.message);
 
+  if (overdue.shouldFlip) {
+    await logInvoiceEvent({
+      invoiceId: invoice.id,
+      userId: invoice.user_id,
+      eventType: "marked_as_overdue",
+    });
+  }
+
   revalidatePath("/dashboard");
-  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath(`/invoices/${invoice.id}`);
 }
 
 export async function publishInvoice(invoiceId: string) {
-  const { supabase } = await loadAndAuthorise(invoiceId);
-  await applyPublishUpdate(supabase, invoiceId, {});
+  const { supabase, invoice } = await loadAndAuthorise(invoiceId);
+  await applyPublishUpdate(supabase, invoice, {});
 }
 
 export async function publishAndSendEmail(
@@ -209,7 +227,7 @@ export async function publishAndSendEmail(
 
   if (!invoice.client_email) {
     // Nothing to send to — fall back to publish-only semantics.
-    await applyPublishUpdate(supabase, invoiceId, {});
+    await applyPublishUpdate(supabase, invoice, {});
     return { emailStatus: "no_recipient" };
   }
 
@@ -230,7 +248,7 @@ export async function publishAndSendEmail(
   });
 
   const succeeded = outcome.status === "sent";
-  await applyPublishUpdate(supabase, invoiceId, {
+  await applyPublishUpdate(supabase, invoice, {
     sent_at: succeeded ? attemptAt : null,
     send_method: succeeded ? "email" : null,
     email_attempted_at: attemptAt,
@@ -245,7 +263,7 @@ export async function publishAndMarkSent(
 ): Promise<{ downloadUrl: string } | undefined> {
   const { supabase, invoice } = await loadAndAuthorise(invoiceId);
 
-  await applyPublishUpdate(supabase, invoiceId, {
+  await applyPublishUpdate(supabase, invoice, {
     sent_at: new Date().toISOString(),
     send_method: "manual",
   });
