@@ -9,7 +9,9 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAddressTxs } from "@/lib/mempool";
 import { decidePaymentSchedule } from "@/lib/invoices/payment-schedule";
+import { decideOverdueFlip } from "@/lib/invoices/overdue-actions";
 import { sendPaymentDetectedEmail, sendPaymentConfirmedEmail } from "@/lib/email/send";
+import { logInvoiceEvent } from "@/lib/invoice-events";
 
 const BATCH_SIZE = 50;
 
@@ -125,7 +127,62 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const summary = { processed: invoices.length, transitions, errors };
+  const overdueFlips = await sweepOverdue(supabase, now);
+
+  const summary = { processed: invoices.length, transitions, errors, overdueFlips };
   console.log("[cron/payment-sweep]", summary);
   return NextResponse.json(summary);
+}
+
+interface OverdueScanRow {
+  id: string;
+  user_id: string;
+  status: "pending";
+  due_date: string;
+}
+
+async function sweepOverdue(
+  supabase: ReturnType<typeof createAdminClient>,
+  now: Date
+): Promise<number> {
+  // Calendar-day comparison: any invoice whose due_date is strictly before
+  // today's UTC date is overdue. Same-day invoices keep the rest of today.
+  const todayStr = now.toISOString().slice(0, 10);
+
+  const { data: rows, error } = await supabase
+    .from("invoices")
+    .select("id, user_id, status, due_date")
+    .eq("status", "pending")
+    .not("due_date", "is", null)
+    .lt("due_date", todayStr);
+
+  if (error) {
+    console.error("[cron/payment-sweep] overdue scan failed", error);
+    return 0;
+  }
+
+  let flipped = 0;
+  for (const inv of (rows ?? []) as OverdueScanRow[]) {
+    const decision = decideOverdueFlip({ status: inv.status, due_date: inv.due_date }, now);
+    if (!decision.shouldFlip) continue;
+
+    const { error: updateError } = await supabase
+      .from("invoices")
+      .update({ status: "overdue" })
+      .eq("id", inv.id)
+      .eq("status", "pending");
+
+    if (updateError) {
+      console.error("[cron/payment-sweep] overdue flip failed", inv.id, updateError);
+      continue;
+    }
+
+    flipped += 1;
+    await logInvoiceEvent({
+      invoiceId: inv.id,
+      userId: inv.user_id,
+      eventType: "marked_as_overdue",
+    });
+  }
+  return flipped;
 }

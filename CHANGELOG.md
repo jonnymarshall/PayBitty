@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.11] - 2026-04-29
+
+### Added
+- **Auto-flip past-due invoices to overdue.** The Vercel Cron `payment-sweep` endpoint now runs a second sweep on every tick: any `pending` invoice whose `due_date` is strictly before today's UTC date is flipped to `overdue` and recorded in the activity feed (`marked_as_overdue`) without owner intervention. The flip uses optimistic concurrency (`.eq("status", "pending")`) so a payment landing in the same tick wins. Decision logic lives in a new pure helper `decideOverdueFlip()` in `src/lib/invoices/overdue-actions.ts` (12 unit tests). Same-day invoices keep the rest of today before flipping.
+- **Synchronous flip at publish time.** Publishing an invoice (`publishInvoice` / `publishAndSendEmail` / `publishAndMarkSent`) now calls `decideOverdueFlip` against the loaded invoice's `due_date` and writes `status='overdue'` directly when applicable, instead of writing `pending` and waiting for the next cron tick. Closes a UX gap where a freshly published invoice with a past due date appeared `pending` for up to ~60s in production (and indefinitely in dev, where the cron does not fire). Activity feed records `marked_as_overdue` in the same flow. (6 new unit tests in `actions.test.ts`.)
+- **Source-of-truth helpers for the four overdue cases.** New `canMarkAsOverdue(invoice)` and `canMarkAsPending(invoice)` in `src/lib/invoices/overdue-actions.ts` encode the four cases in one place: (#1) past-due unpaid → cron auto-flips, no manual button; (#2) future-due unpaid → no manual button; (#3) no due date + unpaid → "Mark as overdue" available; (#4) no due date + overdue → "Mark as pending" available.
+
+### Changed
+- **`MarkAsMenu` is now due-date-aware.** Accepts a new `dueDate` prop and hides Overdue / Pending items per the four-cases helper. Paid → Unpaid stays always-on (unchanged). On overdue invoices the reverse item is now labelled "Pending" (was "Unpaid") to match the spec.
+- **Invoice list row dropdown matches.** "Mark as overdue" no longer appears for pending rows that have a future due date (case #2), and a new "Mark as pending" item appears for overdue rows with no due date (case #4) wired to the existing `markUnpaid` server action.
+- **Cron response shape.** `/api/cron/payment-sweep` now returns `{ processed, transitions, errors, overdueFlips }` (added `overdueFlips`).
+
+### Out of scope
+- **Email notification on auto-flip.** Owner sees the change on the next dashboard load (Realtime picks it up, activity feed records it). A Resend mailout for auto-overdue is deferred.
+- **Configurable grace period.** The flip is the moment `due_date < today`. A "mark as overdue N days after due date" knob is deferred.
+- **DB-side scheduled job.** A Postgres trigger / cron job would split state-transition ownership between TypeScript and the database; keeping it in the Next.js cron preserves a single source of truth and is simpler to test.
+
 ## [1.4.10] - 2026-04-29
 
 ### Documentation

@@ -174,6 +174,7 @@ A Vercel Cron hits `/api/cron/payment-sweep` **every minute** (`* * * * *`). The
 3. For each, calls mempool.space's `GET /api/address/<addr>/txs`, then runs the pure decision function `decidePaymentSchedule(…)` which produces the next state and the next `next_check_at`.
 4. Writes the decision with optimistic concurrency (`.eq('status', prior)`).
 5. If the status changed, dispatches a "Payment detected" or "Payment confirmed" email via Resend.
+6. Runs a sibling **overdue sweep** (`sweepOverdue` helper, decision lives in `src/lib/invoices/overdue-actions.ts`): any `pending` invoice whose `due_date` is strictly before today's UTC date is flipped to `overdue` and the transition is recorded in the activity feed (`marked_as_overdue`). Independent of mempool — the sweep runs even if the payment-poll loop has errors. Cron response includes an `overdueFlips` counter.
 
 The per-invoice schedule is **two-stage**:
 
@@ -261,6 +262,8 @@ Three server actions back the menu (`src/app/(dashboard)/invoices/actions.ts`):
 - `publishInvoice(id)` — publish only, no delivery side-effect.
 - `publishAndSendEmail(id)` — publish + fire `invoice-published` email; returns `{ emailStatus }` so the UI can show success/failure.
 - `publishAndMarkSent(id, { withDownload? })` — publish + record manual delivery. With `withDownload: true`, returns `{ downloadUrl }` so the client triggers the existing `/api/invoices/[id]/pdf` route.
+
+All three route through `applyPublishUpdate`, which calls `decideOverdueFlip` against the loaded invoice's `due_date` and writes `status='overdue'` directly when the date is already past — so a freshly published past-due invoice lands on `overdue` immediately rather than waiting for the next cron sweep. The activity feed records `marked_as_overdue` in the same write.
 
 ---
 

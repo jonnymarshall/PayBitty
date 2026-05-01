@@ -308,12 +308,15 @@ describe("InvoiceActions — archived status", () => {
 describe("InvoiceActions — paid status", () => {
   const paid = { id: "inv-paid", status: "paid" };
 
-  it("Mark as menu hides the Paid item (already paid) and offers Unpaid + Overdue", () => {
+  it("Mark as menu hides the Paid item (already paid) and offers Unpaid", () => {
+    // Overdue is no longer offered for paid invoices: per the four-cases spec
+    // (v1.4.11), only unpaid statuses are eligible for the manual "Mark as
+    // overdue" button. A paid invoice must first be marked Unpaid.
     render(<InvoiceActions invoice={paid} />);
     fireEvent.click(screen.getByRole("button", { name: /^mark as$/i }));
     expect(screen.queryByRole("menuitem", { name: /^paid$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /^unpaid$/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /^overdue$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^overdue$/i })).not.toBeInTheDocument();
   });
 
   it("still renders View public invoice, Archive, Duplicate, Delete", () => {

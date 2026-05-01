@@ -23,6 +23,7 @@ import { parseServerError } from "@/lib/invoices";
 interface Invoice {
   id: string;
   status: string;
+  due_date?: string | null;
   client_email?: string | null;
   sent_at?: string | null;
   send_method?: "email" | "manual" | null;
@@ -173,6 +174,7 @@ export function InvoiceActions({ invoice }: { invoice: Invoice }) {
           <MarkAsMenu
             invoiceId={invoice.id}
             status={invoice.status}
+            dueDate={invoice.due_date ?? null}
             busy={busy}
             onMarkPaid={(id) => run(() => markPaid(id))}
             onMarkUnpaid={(id) => run(() => markUnpaid(id))}

@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InvoiceStatusBadge } from "@/components/invoice-status-badge";
+import { canMarkAsOverdue, canMarkAsPending } from "@/lib/invoices/overdue-actions";
 
 export interface InvoiceRow {
   id: string;
@@ -38,6 +39,7 @@ export interface RowActions {
   onDownloadAndMarkSent: (id: string) => void;
   onMarkPaid: (id: string) => void;
   onMarkOverdue: (id: string) => void;
+  onMarkPending: (id: string) => void;
   onArchive: (id: string) => void;
   onUnarchive: (id: string) => void;
   onDelete: (id: string) => void;
@@ -262,9 +264,14 @@ export function buildColumns(actions: RowActions): ColumnDef<InvoiceRow>[] {
                   Mark as paid
                 </DropdownMenuItem>
               )}
-              {invoice.status === "pending" && (
+              {canMarkAsOverdue(invoice) && (
                 <DropdownMenuItem onClick={() => actions.onMarkOverdue(invoice.id)}>
                   Mark as overdue
+                </DropdownMenuItem>
+              )}
+              {canMarkAsPending(invoice) && (
+                <DropdownMenuItem onClick={() => actions.onMarkPending(invoice.id)}>
+                  Mark as pending
                 </DropdownMenuItem>
               )}
               {isArchived && (

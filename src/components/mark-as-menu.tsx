@@ -8,31 +8,37 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { canMarkAsOverdue, canMarkAsPending } from "@/lib/invoices/overdue-actions";
 
 export interface MarkAsMenuProps {
   invoiceId: string;
   status: string;
+  dueDate: string | null;
   onMarkPaid: (id: string) => void;
   onMarkUnpaid: (id: string) => void;
   onMarkOverdue: (id: string) => void;
   busy?: boolean;
 }
 
-// payment_detected is a transient on-chain state; treat it like pending for
-// the purposes of this menu so the owner can still override either way.
 const UNPAID_STATES = new Set(["pending", "payment_detected"]);
 
 export function MarkAsMenu({
   invoiceId,
   status,
+  dueDate,
   onMarkPaid,
   onMarkUnpaid,
   onMarkOverdue,
   busy,
 }: MarkAsMenuProps) {
-  const isUnpaid = UNPAID_STATES.has(status);
   const isPaid = status === "paid";
-  const isOverdue = status === "overdue";
+  const isUnpaid = UNPAID_STATES.has(status);
+  const showOverdue = canMarkAsOverdue({ status, due_date: dueDate });
+  // "Pending" is the case-#4 reverse (overdue → pending). The paid → pending
+  // transition keeps its existing always-on availability for paid invoices.
+  const showPending = isPaid || canMarkAsPending({ status, due_date: dueDate });
+  // Suppress the duplicate when the row is already in an unpaid state.
+  const showPendingItem = showPending && !isUnpaid;
 
   return (
     <DropdownMenu>
@@ -57,15 +63,15 @@ export function MarkAsMenu({
             Paid
           </DropdownMenuItem>
         )}
-        {!isUnpaid && (
+        {showPendingItem && (
           <DropdownMenuItem
             id={`mark-as-menu--unpaid-${invoiceId}`}
             onClick={() => onMarkUnpaid(invoiceId)}
           >
-            Unpaid
+            {isPaid ? "Unpaid" : "Pending"}
           </DropdownMenuItem>
         )}
-        {!isOverdue && (
+        {showOverdue && (
           <DropdownMenuItem
             id={`mark-as-menu--overdue-${invoiceId}`}
             onClick={() => onMarkOverdue(invoiceId)}

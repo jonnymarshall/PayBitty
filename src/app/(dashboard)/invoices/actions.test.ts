@@ -121,6 +121,69 @@ const PUBLISHABLE_INVOICE = {
   due_date: "2026-07-10",
 };
 
+describe("publish actions — synchronous overdue flip (v1.4.11)", () => {
+  // A draft published with a past due date should land directly on `overdue`
+  // rather than `pending` (which would otherwise show as misclassified until
+  // the next cron tick — up to 60 seconds, and never in dev).
+  const PAST_DUE_INVOICE = { ...PUBLISHABLE_INVOICE, due_date: "2020-01-01" };
+
+  it("publishInvoice with a past due_date flips status straight to overdue", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PAST_DUE_INVOICE });
+    await publishInvoice("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("overdue");
+  });
+
+  it("publishInvoice with a past due_date logs marked_as_overdue", async () => {
+    makeSupabase({ fetchData: PAST_DUE_INVOICE });
+    await publishInvoice("inv-1");
+    expect(logInvoiceEvent).toHaveBeenCalledWith({
+      invoiceId: "inv-1",
+      userId: "user-1",
+      eventType: "marked_as_overdue",
+    });
+  });
+
+  it("publishInvoice with no due_date stays pending (no flip)", async () => {
+    const { updateChain } = makeSupabase({
+      fetchData: { ...PUBLISHABLE_INVOICE, due_date: null },
+    });
+    await publishInvoice("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+    expect(logInvoiceEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "marked_as_overdue" }),
+    );
+  });
+
+  it("publishInvoice with a future due_date stays pending (no flip)", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    await publishInvoice("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("pending");
+  });
+
+  it("publishAndMarkSent with a past due_date: status=overdue AND sent_at set", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PAST_DUE_INVOICE });
+    await publishAndMarkSent("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("overdue");
+    expect(payload.sent_at).toBeTruthy();
+    expect(payload.send_method).toBe("manual");
+  });
+
+  it("publishAndSendEmail with a past due_date and successful email: status=overdue AND email metadata set", async () => {
+    vi.mocked(sendInvoicePublishedEmail).mockResolvedValueOnce({ status: "sent" });
+    const { updateChain } = makeSupabase({ fetchData: PAST_DUE_INVOICE });
+    await publishAndSendEmail("inv-1");
+    const payload = updateChain.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.status).toBe("overdue");
+    expect(payload.sent_at).toBeTruthy();
+    expect(payload.send_method).toBe("email");
+    expect(payload.email_attempted_at).toBeTruthy();
+  });
+});
+
 describe("publishInvoice (publish-only, no email)", () => {
   it("sets status=pending without firing the invoice_published email", async () => {
     const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
