@@ -258,3 +258,56 @@ describe("InvoiceForm line-item drag-to-reorder", () => {
     expect(payload.line_items?.map((i) => i.description)).toEqual(["Gamma", "Alpha", "Beta"]);
   });
 });
+
+describe("InvoiceForm — server-error field placement and scroll on save-draft (v1.4.12 hotfix)", () => {
+  function fillRequiredAndEnableBitcoin(form: HTMLElement) {
+    const btcCheckbox = form.querySelector("#input-accepts-bitcoin") as HTMLInputElement;
+    return btcCheckbox;
+  }
+
+  it("attaches a 'btc_address:' server error to the BTC address field (not the form-level banner)", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveDraft).mockClear();
+    vi.mocked(saveDraft).mockRejectedValueOnce(
+      new Error("btc_address: This address has already received transactions — use a fresh address for each invoice."),
+    );
+
+    render(<InvoiceForm sessionEmail="owner@example.com" />);
+
+    const btcToggle = document.getElementById("input-accepts-bitcoin") as HTMLInputElement;
+    await user.click(btcToggle);
+    const addressInput = document.getElementById("input-btc-address") as HTMLInputElement;
+    await user.type(addressInput, "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
+
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+    // The error must render alongside the BTC address field, not in the form-level banner.
+    const fieldError = await screen.findByText(/already received transactions/i);
+    expect(fieldError).toBeInTheDocument();
+
+    // The form-level banner ('_form' error) must NOT carry this message — i.e. the
+    // raw "btc_address: ..." string with prefix must not appear anywhere on the page.
+    expect(screen.queryByText(/^btc_address:/)).not.toBeInTheDocument();
+  });
+
+  it("scrolls the BTC address field into view when save-draft fails with a btc_address error", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveDraft).mockClear();
+    vi.mocked(saveDraft).mockRejectedValueOnce(
+      new Error("btc_address: This address has already received transactions — use a fresh address for each invoice."),
+    );
+
+    render(<InvoiceForm sessionEmail="owner@example.com" />);
+
+    const btcToggle = document.getElementById("input-accepts-bitcoin") as HTMLInputElement;
+    await user.click(btcToggle);
+    const addressInput = document.getElementById("input-btc-address") as HTMLInputElement;
+    await user.type(addressInput, "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
+
+    const scrollSpy = vi.spyOn(addressInput, "scrollIntoView");
+    await user.click(screen.getByRole("button", { name: /save draft/i }));
+
+    await screen.findByText(/already received transactions/i);
+    expect(scrollSpy).toHaveBeenCalled();
+  });
+});

@@ -15,6 +15,7 @@ vi.mock("@/lib/mempool", () => ({
 
 vi.mock("@/lib/btc-network", () => ({
   getMempoolBaseUrl: () => "https://mempool.space/testnet4",
+  mempoolAddressUrl: (addr: string) => `https://mempool.space/testnet4/address/${addr}`,
 }));
 
 async function flushMicrotasks() {

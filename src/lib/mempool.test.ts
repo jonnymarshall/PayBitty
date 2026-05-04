@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { txPaysToAddress, fetchAddressTxs, fetchTx } from "./mempool";
+import { txPaysToAddress, fetchAddressTxs, fetchTx, addressHasHistory } from "./mempool";
 import type { MempoolTx } from "./mempool";
 
 const tx = (vout: { scriptpubkey_address?: string; value: number }[]): MempoolTx => ({
@@ -72,5 +72,56 @@ describe("fetchTx", () => {
       new Response("not found", { status: 404 })
     );
     expect(await fetchTx("abc123")).toBeNull();
+  });
+});
+
+describe("addressHasHistory", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const stats = (chainTxCount: number, mempoolTxCount: number) => ({
+    address: "bc1qtest",
+    chain_stats: { tx_count: chainTxCount, funded_txo_count: 0, funded_txo_sum: 0, spent_txo_count: 0, spent_txo_sum: 0 },
+    mempool_stats: { tx_count: mempoolTxCount, funded_txo_count: 0, funded_txo_sum: 0, spent_txo_count: 0, spent_txo_sum: 0 },
+  });
+
+  it("returns true when the address has any confirmed on-chain transactions", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(stats(5, 0)), { status: 200 })
+    );
+    expect(await addressHasHistory("bc1qtest")).toBe(true);
+  });
+
+  it("returns true when the address has any pending mempool transactions", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(stats(0, 1)), { status: 200 })
+    );
+    expect(await addressHasHistory("bc1qtest")).toBe(true);
+  });
+
+  it("returns false when the address has no transactions on-chain or in mempool", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(stats(0, 0)), { status: 200 })
+    );
+    expect(await addressHasHistory("bc1qtest")).toBe(false);
+  });
+
+  it("returns null when mempool.space is unreachable (non-OK response)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("upstream error", { status: 503 })
+    );
+    expect(await addressHasHistory("bc1qtest")).toBeNull();
+  });
+
+  it("returns null when fetch throws (network failure)", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network down"));
+    expect(await addressHasHistory("bc1qtest")).toBeNull();
+  });
+
+  it("queries the network-aware base URL", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(stats(0, 0)), { status: 200 })
+    );
+    await addressHasHistory("bc1qtest");
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("/api/address/bc1qtest"));
   });
 });

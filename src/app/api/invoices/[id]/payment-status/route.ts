@@ -11,6 +11,11 @@ const STATUS_ORDER: Record<string, number> = {
   paid: 2,
 };
 
+// Only these statuses can transition via watcher-driven payment detection.
+// Drafts, archived, and (already-)paid invoices are rejected at the route gate
+// so a misbehaving watcher cannot corrupt their state.
+const PAYABLE_STATUSES = new Set(["pending", "payment_detected", "overdue"]);
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -45,6 +50,13 @@ export async function POST(
   const newOrder = STATUS_ORDER[status];
   if (newOrder <= currentOrder) {
     return NextResponse.json({ status: invoice.status });
+  }
+
+  if (!PAYABLE_STATUSES.has(invoice.status)) {
+    return NextResponse.json(
+      { error: "Invoice is not in a payable state", status: invoice.status },
+      { status: 409 },
+    );
   }
 
   const tx = await fetchTx(txid);

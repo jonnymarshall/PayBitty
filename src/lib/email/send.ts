@@ -5,6 +5,7 @@ import { PaymentDetectedOwnerEmail } from "./templates/payment-detected-owner";
 import { PaymentDetectedPayerEmail } from "./templates/payment-detected-payer";
 import { PaymentConfirmedOwnerEmail } from "./templates/payment-confirmed-owner";
 import { PaymentConfirmedPayerEmail } from "./templates/payment-confirmed-payer";
+import { mempoolTxUrl } from "@/lib/btc-network";
 
 export type EmailType =
   | "invoice_published"
@@ -163,16 +164,11 @@ export interface SendPaymentStatusArgs {
   txid: string;
 }
 
-function mempoolLink(txid: string): string {
-  const base = process.env.NEXT_PUBLIC_MEMPOOL_BASE_URL || "https://mempool.space";
-  return `${base}/tx/${txid}`;
-}
-
 const InvoiceLabel = (n: string | null) => (n ? `Invoice ${n}` : "Your invoice");
 
 export async function sendPaymentDetectedEmail(args: SendPaymentStatusArgs): Promise<void> {
   const totalDisplay = fmtCurrency(args.totalFiat, args.currency);
-  const mempoolUrl = mempoolLink(args.txid);
+  const mempoolUrl = mempoolTxUrl(args.txid);
 
   await safeSend(
     {
@@ -233,7 +229,7 @@ export async function sendPaymentDetectedEmail(args: SendPaymentStatusArgs): Pro
 
 export async function sendPaymentConfirmedEmail(args: SendPaymentStatusArgs): Promise<void> {
   const totalDisplay = fmtCurrency(args.totalFiat, args.currency);
-  const mempoolUrl = mempoolLink(args.txid);
+  const mempoolUrl = mempoolTxUrl(args.txid);
 
   await safeSend(
     {

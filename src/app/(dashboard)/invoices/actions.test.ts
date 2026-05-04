@@ -7,11 +7,13 @@ vi.mock("@/lib/email/send", () => ({
   sendInvoicePublishedEmail: vi.fn().mockResolvedValue({ status: "sent" }),
 }));
 vi.mock("@/lib/invoice-events", () => ({ logInvoiceEvent: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/mempool", () => ({ addressHasHistory: vi.fn().mockResolvedValue(false) }));
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { sendInvoicePublishedEmail } from "@/lib/email/send";
 import { logInvoiceEvent } from "@/lib/invoice-events";
+import { addressHasHistory } from "@/lib/mempool";
 import {
   saveDraft,
   publishInvoice,
@@ -91,7 +93,13 @@ function makeSupabase({
   return { insertSingle, insertChain, updateChain, updateEq, deleteEq, maybeSingle };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Re-establish the default: addressHasHistory returns false (fresh address) unless
+  // a test overrides it. clearAllMocks clears call history but not once-mocks; if a
+  // RED test queued a once-mock that never got consumed, it would leak into later tests.
+  vi.mocked(addressHasHistory).mockReset().mockResolvedValue(false);
+});
 
 describe("saveDraft", () => {
   it("inserts an invoice with status draft and returns it", async () => {
@@ -100,6 +108,49 @@ describe("saveDraft", () => {
     expect(result.id).toBe("inv-1");
     expect(result.status).toBe("draft");
     expect(insertSingle).toHaveBeenCalled();
+  });
+
+  it("rejects when the BTC address already has on-chain or mempool history (v1.4.12 hotfix)", async () => {
+    const { insertSingle } = makeSupabase();
+    vi.mocked(addressHasHistory).mockResolvedValueOnce(true);
+    await expect(saveDraft(VALID_DRAFT)).rejects.toThrow(
+      /btc_address: This address has already received transactions/i,
+    );
+    expect(insertSingle).not.toHaveBeenCalled();
+  });
+
+  it("proceeds when mempool.space is unreachable — fail-open (v1.4.12 hotfix)", async () => {
+    const { insertSingle } = makeSupabase();
+    vi.mocked(addressHasHistory).mockResolvedValueOnce(null);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await saveDraft(VALID_DRAFT);
+    expect(insertSingle).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/mempool.*unreachable|address history check skipped/i),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("skips the freshness check when accepts_bitcoin is false (no address to check)", async () => {
+    const { insertSingle } = makeSupabase();
+    await saveDraft({ ...VALID_DRAFT, accepts_bitcoin: false });
+    expect(addressHasHistory).not.toHaveBeenCalled();
+    expect(insertSingle).toHaveBeenCalled();
+  });
+});
+
+describe("updateDraft", () => {
+  // updateDraft does a status pre-fetch (single) then an update().eq().select().single().
+  // The default makeSupabase select chain returns BASE_INVOICE; we need a draft fixture.
+  const draftFixture = { id: "inv-1", user_id: "user-1", status: "draft" };
+
+  it("rejects when updating with a BTC address that has prior history (v1.4.12 hotfix)", async () => {
+    makeSupabase({ fetchData: draftFixture });
+    vi.mocked(addressHasHistory).mockResolvedValueOnce(true);
+    const { updateDraft } = await import("./actions");
+    await expect(
+      updateDraft("inv-1", { ...VALID_DRAFT, btc_address: "bc1qpoisoned" }),
+    ).rejects.toThrow(/btc_address: This address has already received transactions/i);
   });
 });
 
@@ -210,6 +261,33 @@ describe("publishInvoice (publish-only, no email)", () => {
       btcConflict: { id: "inv-other", status: "pending" },
     });
     await expect(publishInvoice("inv-1")).rejects.toThrow(/btc_address: This bitcoin address/i);
+  });
+
+  it("rejects when the BTC address already has on-chain or mempool history (v1.4.12)", async () => {
+    makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    vi.mocked(addressHasHistory).mockResolvedValueOnce(true);
+    await expect(publishInvoice("inv-1")).rejects.toThrow(
+      /btc_address: This address has already received transactions/i,
+    );
+  });
+
+  it("proceeds when the BTC address has no prior history (v1.4.12)", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    vi.mocked(addressHasHistory).mockResolvedValueOnce(false);
+    await publishInvoice("inv-1");
+    expect(updateChain).toHaveBeenCalled();
+  });
+
+  it("proceeds when mempool.space is unreachable — fail-open (v1.4.12)", async () => {
+    const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
+    vi.mocked(addressHasHistory).mockResolvedValueOnce(null);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await publishInvoice("inv-1");
+    expect(updateChain).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/mempool.*unreachable|address history check skipped/i),
+    );
+    warnSpy.mockRestore();
   });
 
   it("initialises background-polling columns (next_check_at = +1m, stage_attempt = 0, mempool_seen_at = null) alongside the status change", async () => {

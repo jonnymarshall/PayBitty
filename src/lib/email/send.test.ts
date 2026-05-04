@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type React from "react";
 
 const mockResendSend = vi.fn();
 const mockGetResend = vi.fn();
@@ -203,6 +204,53 @@ describe("sendPaymentDetectedEmail", () => {
     expect(ownerCall?.[0].subject).toMatch(/INV-1/);
     expect(ownerCall?.[0].subject?.toLowerCase()).toMatch(/your client|payment/);
     expect(payerCall?.[0].subject?.toLowerCase()).toMatch(/your payment/);
+  });
+
+  it("renders a network-aware mempool URL inside the owner and payer emails — testnet4 (v1.4.12)", async () => {
+    const originalEnv = process.env.NEXT_PUBLIC_BTC_NETWORK;
+    process.env.NEXT_PUBLIC_BTC_NETWORK = "testnet4";
+    vi.resetModules();
+    const { sendPaymentDetectedEmail: send } = await import("./send");
+    const { mempoolTxUrl } = await import("@/lib/btc-network");
+    const { render } = await import("@react-email/render");
+
+    await send({ ...paymentArgs, txid: "tx-xyz" });
+
+    const expectedUrl = mempoolTxUrl("tx-xyz");
+    expect(expectedUrl).toBe("https://mempool.space/testnet4/tx/tx-xyz");
+
+    for (const call of mockResendSend.mock.calls) {
+      const html = await render(call[0].react as React.ReactElement);
+      expect(html).toContain(expectedUrl);
+      expect(html).not.toContain('href="https://mempool.space/tx/tx-xyz"');
+    }
+
+    if (originalEnv === undefined) delete process.env.NEXT_PUBLIC_BTC_NETWORK;
+    else process.env.NEXT_PUBLIC_BTC_NETWORK = originalEnv;
+    vi.resetModules();
+  });
+
+  it("renders a network-aware mempool URL inside the owner and payer emails — mainnet (v1.4.12)", async () => {
+    const originalEnv = process.env.NEXT_PUBLIC_BTC_NETWORK;
+    delete process.env.NEXT_PUBLIC_BTC_NETWORK;
+    vi.resetModules();
+    const { sendPaymentDetectedEmail: send } = await import("./send");
+    const { mempoolTxUrl } = await import("@/lib/btc-network");
+    const { render } = await import("@react-email/render");
+
+    await send({ ...paymentArgs, txid: "tx-xyz" });
+
+    const expectedUrl = mempoolTxUrl("tx-xyz");
+    expect(expectedUrl).toBe("https://mempool.space/tx/tx-xyz");
+
+    for (const call of mockResendSend.mock.calls) {
+      const html = await render(call[0].react as React.ReactElement);
+      expect(html).toContain(expectedUrl);
+    }
+
+    if (originalEnv === undefined) delete process.env.NEXT_PUBLIC_BTC_NETWORK;
+    else process.env.NEXT_PUBLIC_BTC_NETWORK = originalEnv;
+    vi.resetModules();
   });
 });
 
