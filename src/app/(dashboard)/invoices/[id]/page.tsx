@@ -52,7 +52,11 @@ export default async function InvoiceDetailPage({
             <InvoiceDates createdAt={invoice.created_at} dueDate={invoice.due_date} />
           </div>
         </div>
-        {invoice.accepts_bitcoin && invoice.btc_address ? (
+        {invoice.accepts_bitcoin &&
+        invoice.btc_address &&
+        (invoice.status === "pending" ||
+          invoice.status === "payment_detected" ||
+          invoice.status === "overdue") ? (
           <PaymentWatcherUncontrolled
             key={invoice.status}
             invoiceId={invoice.id}

@@ -995,42 +995,54 @@ All email-related events share **one icon family** (envelope) per the user's pre
 
 ---
 
-### ⏳ v1.4.12 — BTC Address Hardening
+### ✅ v1.4.12 — BTC Address Hardening
 
 **Branch:** `v1.4.12/btc-address-hardening`
 
-**Context:** Three related gaps in BTC address validation and mempool URL handling discovered during v1.4 testing:
+**Context:** Two real gaps in BTC address validation and mempool URL handling, addressed in this version. A third candidate (soft-delete to prevent address reuse from deleted invoices) was considered and dropped — see "Scope considered and rejected" below.
 
-1. **Deleted-invoice reuse.** An owner deletes an invoice that had an address. The uniqueness check (currently "no BTC address reuse across non-draft invoices") is implemented by counting rows in `invoices` — but deleted rows are hard-deleted, so the address becomes free again. A malicious or careless owner can re-publish the same address on a new invoice, which at best fragments payment detection and at worst lets a paid-for-real payment detect against a stale invoice.
-2. **Already-used addresses.** A freelancer pastes in a BTC address that already has on-chain history (e.g. reuse from a previous wallet, or a known-public address). mempool.space's balance + tx history gives this away. We should reject addresses with any prior receive history at publish time — it defends against both false-positive detections (prior txs matching the BTC amount) and against weak operational security (address reuse leaks counterparty privacy).
-3. **Mempool transaction URLs in emails are not network-aware.** The public invoice page and the payment-confirmed email both link to mempool.space for the detected tx, but the email hard-codes `https://mempool.space/tx/<txid>` while the UI uses a network-aware helper that emits `https://mempool.space/testnet4/tx/<txid>` on testnet. On testnet the email link 404s (or shows a stranger's mainnet tx of the same id, worse). The two surfaces must agree — both should call the same `mempoolTxUrl(txid)` helper that respects `NEXT_PUBLIC_BTC_NETWORK`.
-
-**Scope — deleted-invoice reuse**
-- [ ] Soft-delete existing invoices instead of hard-delete. Option A: add a `deleted` enum value to the `status` enum + a `deleted_at` timestamp column; `deleteInvoice` sets status and stamps the timestamp rather than calling `.delete()`. Option B: add a separate `deleted_at` column only, and filter every existing query by `where deleted_at is null`. Option A is cleaner; Option B is a smaller migration. Pick one in the branch; lean A.
-- [ ] Update the BTC uniqueness check in `src/app/(dashboard)/invoices/actions.ts` to continue matching against soft-deleted rows (but with a clearer error message: "This address was used on a deleted invoice").
-- [ ] Hide deleted rows from all dashboard views (list, detail, Realtime) — they are DB-only at this point.
-- [ ] Alternative considered — "only allow hard delete if the invoice was never paid". Rejected because address-reuse risks apply even to unpaid published invoices (a payer could still pay against the stale address after deletion).
+1. **Already-used addresses.** A freelancer pastes in a BTC address that already has on-chain history (e.g. reuse from a previous wallet, or a known-public address). mempool.space's balance + tx history gives this away. We reject addresses with any prior receive history at publish time — defending against both false-positive detections (prior txs matching the BTC amount) and weak operational security (address reuse leaks counterparty privacy).
+2. **Mempool transaction URLs in emails are not network-aware.** The public invoice page and the payment-detected/confirmed emails both link to mempool.space, but `src/lib/email/send.ts` hard-coded `https://mempool.space/tx/<txid>` while the UI used a network-aware helper that emits `https://mempool.space/testnet4/tx/<txid>` on testnet. On testnet the email link 404s (or worse, shows an unrelated mainnet tx of the same id). Both surfaces now call the same `mempoolTxUrl(txid)` helper that respects `NEXT_PUBLIC_BTC_NETWORK`.
 
 **Scope — pre-publish balance check**
-- [ ] Add a publish-time call to `GET https://mempool.space/api/address/<addr>` (existing helper in `src/lib/mempool.ts`) and reject if `chain_stats.tx_count > 0` or `mempool_stats.tx_count > 0`. Include the reason in the error ("This address has already received transactions — use a fresh address for each invoice").
-- [ ] Cache the mempool response briefly (or not at all — publish is not a hot path).
-- [ ] Graceful failure: if mempool.space is unreachable, **allow** publish and log a warning. Do not block the owner on an external dependency. Add a test asserting this fallback.
-- [ ] Make the check conditional on `NEXT_PUBLIC_BTC_NETWORK` so testnet addresses are checked against the testnet4 endpoint.
-- [ ] Update the README's "Bitcoin address policy" section (added during v1.4.10 planning) — flip the wording from "planned in v1.4.12" to a current statement of behaviour, including the mempool-down fallback rule.
+- [x] Add `addressHasHistory(address)` helper to `src/lib/mempool.ts` calling `GET /api/address/<addr>` and returning `true` iff `chain_stats.tx_count > 0` or `mempool_stats.tx_count > 0`. Returns `null` when mempool is unreachable.
+- [x] Wire into `loadAndAuthorise` in `src/app/(dashboard)/invoices/actions.ts`. Reject with: "This address has already received transactions — use a fresh address for each invoice."
+- [x] Graceful failure: if mempool.space is unreachable, allow publish and log `[publish] mempool.space unreachable, address history check skipped for invoice <id>`. Test in `src/app/(dashboard)/invoices/actions.test.ts` asserts the fallback.
+- [x] Network-awareness comes free via `getMempoolBaseUrl()`.
+- [x] README's "Bitcoin address policy" section updated — flipped from "planned in v1.4.12" to current statement of behaviour, including the mempool-down fallback rule.
 
 **Scope — network-aware mempool URLs everywhere**
-- [ ] Audit every reference to `mempool.space` in the codebase (`grep -ri "mempool.space" src/`). Every one must go through a single helper (e.g. `mempoolTxUrl(txid)` / `mempoolAddressUrl(addr)` in `src/lib/mempool.ts`) that prepends `/testnet4` when `NEXT_PUBLIC_BTC_NETWORK=testnet4`.
-- [ ] Replace the hard-coded `https://mempool.space/tx/<txid>` in the payment-confirmed email template (and any other email templates that link to mempool) with the helper. Confirm via grep that no other surface still hard-codes the URL.
-- [ ] Test: render the payment-confirmed email under both `NEXT_PUBLIC_BTC_NETWORK=mainnet` and `=testnet4` and assert the link host/path matches what the public invoice page renders for the same tx.
+- [x] Added `mempoolTxUrl(txid)` and `mempoolAddressUrl(address)` to `src/lib/btc-network.ts`.
+- [x] Replaced the hand-rolled `mempoolLink` in `src/lib/email/send.ts` with `mempoolTxUrl`. Removed the now-unused `NEXT_PUBLIC_MEMPOOL_BASE_URL` env-var override.
+- [x] Replaced the inline `${getMempoolBaseUrl()}/address/...` in `src/app/invoice/[id]/mark-sent-button.tsx` with `mempoolAddressUrl`.
+- [x] Audit (`grep -rn "mempool.space" src/`) confirms every URL now flows through `btc-network.ts`. Remaining matches are display strings ("View on mempool.space"), comments, and the helper itself.
+- [x] Parity tests in `src/lib/email/send.test.ts` render the email HTML under both `NEXT_PUBLIC_BTC_NETWORK=mainnet` and `=testnet4` and assert the link matches `mempoolTxUrl(txid)` for that network.
 
-**Tests**
-- [ ] Uniqueness check against soft-deleted rows — publish, delete, try to re-publish same address → reject.
-- [ ] Balance-check happy path — fresh address → accept.
-- [ ] Balance-check rejection — address with existing tx history → reject with the specific message.
-- [ ] Balance-check fallback — mempool down → accept with warning logged.
-- [ ] Mempool URL parity — assert the email link and the UI link for the same `(txid, network)` are byte-identical.
+**Scope considered and rejected — soft-delete for deleted-invoice reuse**
 
-**Done when:** An owner cannot re-use a BTC address from a deleted invoice, cannot publish an invoice against any address with any on-chain history (on whichever network is configured), and every mempool.space URL in the product (UI, emails, PDFs) is generated through a single network-aware helper.
+The original plan included soft-deleting invoices so a deleted invoice's BTC address would still block reuse. On reflection this was overkill given the balance check:
+
+- Paid-and-deleted addresses always have on-chain history → already rejected by the balance check.
+- Unpaid-and-deleted addresses have no history and no in-flight payment → reusing them is harmless (the deleted invoice is gone, no detection cross-talk possible).
+- The narrow remaining case (invoice paid → owner deletes within seconds → address reused before tx confirms in mempool) is vanishingly rare and not materially worse than manual address reuse outside the system.
+
+The complexity cost (new enum value, `deleted_at` column, query rewrites across list/detail/realtime/exports) didn't earn its keep. Soft-delete may revisit if/when we add a "delete published invoice" feature with different semantics.
+
+**Tests added**
+- [x] `src/lib/mempool.test.ts` — `addressHasHistory` returns true for chain history, true for mempool pending, false for fresh, null for non-OK and thrown fetch.
+- [x] `src/app/(dashboard)/invoices/actions.test.ts` — publish rejects on history, proceeds on fresh, proceeds with warning on mempool failure.
+- [x] `src/lib/btc-network.test.ts` — `mempoolTxUrl` / `mempoolAddressUrl` produce the right URL on mainnet vs testnet4.
+- [x] `src/lib/email/send.test.ts` — payment-detected email URL parity with `mempoolTxUrl`, both networks.
+
+**Done:** Owners cannot publish an invoice against any address with prior on-chain or mempool activity (network-aware), and every mempool.space URL in the product is generated through a single network-aware helper. Manual test guide: `manual-tests/v1.4.12-btc-address-hardening.md`.
+
+**Hotfix added during testing — three further bugs discovered and resolved on this branch:**
+
+1. **`payment-status` route accepted transitions from any status.** The route's `STATUS_ORDER` map had no entry for `draft` (or `archived`), so the `?? -1` fallback meant any incoming `paid` / `payment_detected` passed the gate. A `PaymentWatcher` running against a draft with a poisoned address could flip the draft straight to paid. Fixed by adding an explicit `PAYABLE_STATUSES` allow-list in `src/app/api/invoices/[id]/payment-status/route.ts` — only `pending`, `payment_detected`, `overdue` accept transitions; everything else returns 409 Conflict before the DB write.
+2. **Dashboard detail page mounted `PaymentWatcher` for drafts.** The conditional in `src/app/(dashboard)/invoices/[id]/page.tsx` only checked `accepts_bitcoin && btc_address`, so a draft with an address would spawn a watcher that polled mempool and POSTed against the route. Now also gated on `status ∈ {pending, payment_detected, overdue}`.
+3. **Freshness check fired only on publish, not on save-draft.** Bad addresses could land in the DB on `saveDraft` / `updateDraft`. Extracted `assertAddressFreshness` helper in `src/app/(dashboard)/invoices/actions.ts` and called from all three entrypoints (saveDraft, updateDraft, loadAndAuthorise). Same fail-open behaviour everywhere.
+
+Tests added: route 409 for draft / archived, route accept for overdue, dashboard page no-watcher-for-draft / no-watcher-for-archived, saveDraft and updateDraft reject on history, saveDraft fail-open on mempool unreachable.
 
 ---
 
@@ -1056,7 +1068,16 @@ Real-world testing showed end-to-end latency in the "paid without clicking the b
 **Tests**
 - [ ] Whatever path is chosen: unit tests for the new cadence, integration test simulating "pay but don't click" to assert detection latency is within the new target.
 
-**Done when:** With "paid but button not clicked" as the scenario, detection happens within a measurably better bound than today (target: < 15s p50, < 60s p95), documented in the README.
+**Bug to fix in this branch — txid not displayed on the public invoice page until manual refresh.**
+
+When a payment is detected on the public invoice page (`src/app/invoice/[id]/`), the `PaymentWatcher` flips the local status state via `onStatusChange`, but the transaction id is never threaded into the rendered view. The `btc_txid` column is updated in the DB by the `payment-status` route, and the dashboard detail page picks it up via `InvoiceDetailRealtime`, but the public page does not — the payer has to refresh to see the txid and the mempool.space link.
+
+- [ ] Audit `src/app/invoice/[id]/use-public-invoice-realtime.ts` — does the Supabase realtime subscription include `btc_txid` in its payload? If `replica identity` for the row is `full` (per migration `0006_invoices_replica_identity_full.sql`) it should already; verify the merge logic in the hook actually applies the new field rather than dropping it.
+- [ ] Alternatively, since the public page already calls `PaymentWatcher` which knows the txid the moment it POSTs to `/api/invoices/<id>/payment-status`, plumb the txid back via `onStatusChange`'s callback signature (or a new `onTxidDetected` prop) so the UI can render it without waiting for the realtime roundtrip.
+- [ ] Decide between the two approaches based on whichever is simpler for the realtime audit. Default: extend the watcher callback (more direct, no Supabase realtime dependency).
+- [ ] Test: render the public page with status `pending`, simulate the watcher reporting a tx, assert the txid + mempool link appear without a re-render of the page-level data fetch.
+
+**Done when:** With "paid but button not clicked" as the scenario, detection happens within a measurably better bound than today (target: < 15s p50, < 60s p95), documented in the README. AND the public invoice page renders the txid + mempool link the moment payment is detected, with no manual refresh required.
 
 ---
 

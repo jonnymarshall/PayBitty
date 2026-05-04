@@ -222,6 +222,16 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
     };
   }
 
+  function handleServerError(e: unknown) {
+    const { field, message } = parseServerError((e as Error).message);
+    if (field && field in errorFieldIds) {
+      setErrors({ [field]: message });
+      document.getElementById(errorFieldIds[field])?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      setErrors({ _form: message });
+    }
+  }
+
   async function handleSaveDraft() {
     if (!validate()) return;
     setSaving(true);
@@ -235,7 +245,7 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
         router.push(`/invoices/${invoice.id}`);
       }
     } catch (e) {
-      setErrors({ _form: (e as Error).message });
+      handleServerError(e);
     } finally {
       setSaving(false);
     }
@@ -259,13 +269,7 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
       router.push(`/invoices/${id}`);
       postNavigate?.(result);
     } catch (e) {
-      const { field, message } = parseServerError((e as Error).message);
-      if (field && field in errorFieldIds) {
-        setErrors({ [field]: message });
-        document.getElementById(errorFieldIds[field])?.scrollIntoView({ behavior: "smooth", block: "center" });
-      } else {
-        setErrors({ _form: message });
-      }
+      handleServerError(e);
     } finally {
       setSaving(false);
     }

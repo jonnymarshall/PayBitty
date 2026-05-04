@@ -11,3 +11,11 @@ export function getMempoolWsUrl(): string {
     ? "wss://mempool.space/testnet4/api/v1/ws"
     : "wss://mempool.space/api/v1/ws";
 }
+
+export function mempoolTxUrl(txid: string): string {
+  return `${getMempoolBaseUrl()}/tx/${txid}`;
+}
+
+export function mempoolAddressUrl(address: string): string {
+  return `${getMempoolBaseUrl()}/address/${address}`;
+}

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.12] - 2026-05-04
+
+### Added
+- **Pre-publish address freshness check.** Publishing now calls `GET /api/address/<addr>` on mempool.space (network-aware via `NEXT_PUBLIC_BTC_NETWORK`) and rejects any address with `chain_stats.tx_count > 0` or `mempool_stats.tx_count > 0`. Error: *"This address has already received transactions — use a fresh address for each invoice."* Defends against false-positive detections (a stale tx of the right amount marking the invoice as paid) and counterparty-privacy leaks from address reuse. New `addressHasHistory(address)` helper in `src/lib/mempool.ts` returning `true | false | null`; `null` means mempool.space is unreachable.
+- **Fail-open on mempool downtime.** When `addressHasHistory` returns `null`, the publish proceeds with a logged warning (`[publish] mempool.space unreachable, address history check skipped for invoice <id>`). Owners are not blocked on an external dependency. The application-level uniqueness check (no address reuse across active invoices in the user's account) still runs and remains authoritative.
+- **Network-aware mempool URL helpers.** New `mempoolTxUrl(txid)` and `mempoolAddressUrl(address)` in `src/lib/btc-network.ts`. Single source of truth for every mempool.space URL in the product — UI, emails, future PDFs.
+- **Address-freshness check on save-draft and update-draft.** The same `addressHasHistory` call now fires from `saveDraft` and `updateDraft` (extracted into a shared `assertAddressFreshness` helper). Bad addresses bounce immediately at the save step rather than only at publish time. Same fail-open behaviour everywhere.
+- **Server errors on save attach to the right field and scroll into view.** Refactored `handleSaveDraft` / `runPublishFlow` to share a `handleServerError(e)` helper. A server-side error formatted as `field: message` (e.g. `btc_address: ...`) now renders next to the corresponding form input and the page scrolls to it, matching the publish-flow behaviour.
+
+### Fixed
+- **`payment-status` route accepted transitions from any status (data-corruption hotfix).** The route's `STATUS_ORDER` map only had entries for `pending` / `payment_detected` / `paid`. For a `draft` invoice, `STATUS_ORDER["draft"]` was `undefined`, the `?? -1` fallback meant any incoming `paid` / `payment_detected` passed the gate, and the route would update the row before the payer even noticed. A `PaymentWatcher` running against a draft with a poisoned address could flip the draft straight to paid, send the payment-confirmed email, and write the wrong txid. Fixed in `src/app/api/invoices/[id]/payment-status/route.ts` with an explicit `PAYABLE_STATUSES` allow-list — only `pending`, `payment_detected`, `overdue` accept transitions; everything else returns 409 Conflict before the DB write.
+- **Dashboard detail page mounted `PaymentWatcher` for drafts and archived invoices.** `src/app/(dashboard)/invoices/[id]/page.tsx` only checked `accepts_bitcoin && btc_address` when deciding whether to spawn the watcher, so opening a draft on the dashboard would start a WebSocket + polling loop against mempool.space and POST against the route once the on-chain tx surfaced. Now also gated on `status ∈ {pending, payment_detected, overdue}`.
+- **Email mempool link 404'd on testnet.** `src/lib/email/send.ts` had its own `mempoolLink` helper that ignored `NEXT_PUBLIC_BTC_NETWORK` and emitted `https://mempool.space/tx/<txid>` regardless of network. On testnet the link 404'd or, worse, showed an unrelated mainnet tx of the same id. Replaced with `mempoolTxUrl` from `btc-network.ts`. Parity tests (`src/lib/email/send.test.ts`) render the email HTML under both networks and assert the URL matches what the UI renders.
+- **Inline mempool URL on the mark-sent dialog.** `src/app/invoice/[id]/mark-sent-button.tsx` was constructing the address URL inline with `${getMempoolBaseUrl()}/address/<addr>`. Replaced with `mempoolAddressUrl`.
+
+### Changed
+- **README "Bitcoin address policy" section updated.** Flipped wording from "planned in v1.4.12" to a current statement of behaviour, including the mempool-down fallback rule.
+- **Removed `NEXT_PUBLIC_MEMPOOL_BASE_URL` env var override.** It was only consulted by the email's homemade URL builder, which is gone. Single source of truth is now `NEXT_PUBLIC_BTC_NETWORK`.
+
+### Out of scope (considered and rejected)
+- **Soft-delete for invoices.** The original v1.4.12 plan added a `deleted_at` column + `'deleted'` enum value so a deleted invoice's BTC address would still block reuse. Dropped after a closer look: paid-and-deleted addresses always have on-chain history (the freshness check rejects them); unpaid-and-deleted addresses are harmless to reuse (no payment, no detection cross-talk). The narrow remaining case (paid → deleted within seconds → reused before tx confirms in mempool) is vanishingly rare and not materially worse than manual address reuse outside the system. The complexity cost of soft-delete (new enum, new column, query rewrites across list / detail / realtime / exports) wasn't earning its keep.
+
 ## [1.4.11] - 2026-04-29
 
 ### Added

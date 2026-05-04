@@ -8,6 +8,20 @@ import { computeInvoiceTotals, isValidBtcAddress, LineItem } from "@/lib/invoice
 import { sendInvoicePublishedEmail } from "@/lib/email/send";
 import { logInvoiceEvent } from "@/lib/invoice-events";
 import { decideOverdueFlip } from "@/lib/invoices/overdue-actions";
+import { addressHasHistory } from "@/lib/mempool";
+
+async function assertAddressFreshness(address: string, contextId?: string): Promise<void> {
+  const hasHistory = await addressHasHistory(address);
+  if (hasHistory === true) {
+    throw new Error(
+      "btc_address: This address has already received transactions — use a fresh address for each invoice.",
+    );
+  }
+  if (hasHistory === null) {
+    const ref = contextId ? ` for invoice ${contextId}` : "";
+    console.warn(`[publish] mempool.space unreachable, address history check skipped${ref}`);
+  }
+}
 
 export interface InvoicePayload {
   invoice_number?: string;
@@ -32,6 +46,10 @@ export interface InvoicePayload {
 export async function saveDraft(payload: InvoicePayload) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  if (payload.accepts_bitcoin && payload.btc_address) {
+    await assertAddressFreshness(payload.btc_address);
+  }
 
   const { subtotal, taxFiat, total } = computeInvoiceTotals(payload.line_items, payload.tax_percent);
 
@@ -82,6 +100,10 @@ export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
 
   if (!existing || existing.user_id !== user!.id) throw new Error("Invoice not found");
   if (existing.status !== "draft") throw new Error("Only draft invoices can be edited");
+
+  if (payload.accepts_bitcoin && payload.btc_address) {
+    await assertAddressFreshness(payload.btc_address, invoiceId);
+  }
 
   const { subtotal, taxFiat, total } = computeInvoiceTotals(payload.line_items, payload.tax_percent);
 
@@ -171,6 +193,8 @@ async function loadAndAuthorise(invoiceId: string): Promise<{
       const ref = conflict.invoice_number ? `invoice ${conflict.invoice_number}` : `invoice …${conflict.id.slice(-8)}`;
       throw new Error(`btc_address: This bitcoin address has already been used on ${ref}. Please provide a unique address.`);
     }
+
+    await assertAddressFreshness(invoice.btc_address, invoice.id);
   }
 
   return { supabase, invoice: invoice as Invoice };

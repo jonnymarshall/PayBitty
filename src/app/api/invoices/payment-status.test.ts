@@ -185,6 +185,39 @@ describe("POST /api/invoices/[id]/payment-status", () => {
     }));
   });
 
+  it("rejects with 409 when current status is draft (v1.4.12 hotfix — never auto-flip a draft)", async () => {
+    // Mock a matching tx so the route would otherwise proceed to the DB write —
+    // the assertion is that the status gate stops it before that.
+    mockSingle.mockResolvedValueOnce({ data: { ...pendingInvoice, status: "draft" }, error: null });
+    mockFetchTx.mockResolvedValueOnce(matchingTx);
+    const res = await postRequest("inv-1", { txid: "txabc", status: "paid" });
+    expect(res.status).toBe(409);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockSendConfirmed).not.toHaveBeenCalled();
+    expect(mockSendDetected).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 409 when current status is archived (v1.4.12 hotfix)", async () => {
+    mockSingle.mockResolvedValueOnce({ data: { ...pendingInvoice, status: "archived" }, error: null });
+    mockFetchTx.mockResolvedValueOnce(matchingTx);
+    const res = await postRequest("inv-1", { txid: "txabc", status: "paid" });
+    expect(res.status).toBe(409);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("accepts a transition when current status is overdue (v1.4.12 hotfix — overdue is still payable)", async () => {
+    mockSingle
+      .mockResolvedValueOnce({ data: { ...pendingInvoice, status: "overdue" }, error: null })
+      .mockResolvedValueOnce({ data: { status: "paid" }, error: null });
+    mockFetchTx.mockResolvedValueOnce({ ...matchingTx, status: { confirmed: true } });
+    mockUpdate.mockReturnValue({ eq: () => ({ eq: () => ({ select: () => ({ single: mockSingle }) }) }) });
+
+    const res = await postRequest("inv-1", { txid: "txabc", status: "paid" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("paid");
+  });
+
   it("passes payerEmail: null when client_email is blank", async () => {
     mockSingle
       .mockResolvedValueOnce({ data: { ...pendingInvoice, client_email: "" }, error: null })

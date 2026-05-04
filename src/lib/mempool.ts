@@ -33,3 +33,20 @@ export async function fetchTx(txid: string): Promise<MempoolTx | null> {
   if (!res.ok) return null;
   return res.json();
 }
+
+interface AddressStatsResponse {
+  chain_stats: { tx_count: number };
+  mempool_stats: { tx_count: number };
+}
+
+export async function addressHasHistory(address: string): Promise<boolean | null> {
+  const base = getMempoolBaseUrl();
+  try {
+    const res = await fetch(`${base}/api/address/${address}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as AddressStatsResponse;
+    return data.chain_stats.tx_count > 0 || data.mempool_stats.tx_count > 0;
+  } catch {
+    return null;
+  }
+}

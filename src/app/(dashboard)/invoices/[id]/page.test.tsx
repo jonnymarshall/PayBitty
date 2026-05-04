@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import InvoiceDetailPage from "./page";
 
@@ -23,8 +23,8 @@ const BASE_INVOICE = {
   total_fiat: 1000,
   currency: "USD",
   accepts_bitcoin: false,
-  btc_address: null,
-  btc_txid: null,
+  btc_address: null as string | null,
+  btc_txid: null as string | null,
   status: "pending",
   access_code: null,
   due_date: "2026-05-15" as string | null,
@@ -56,6 +56,14 @@ vi.mock("./invoice-actions", () => ({ InvoiceActions: () => null }));
 vi.mock("./invoice-detail-realtime", () => ({ InvoiceDetailRealtime: () => null }));
 vi.mock("./invoice-activity-card", () => ({ InvoiceActivityCard: () => null }));
 
+const mockPaymentWatcher = vi.fn();
+vi.mock("@/app/invoice/[id]/payment-watcher-uncontrolled", () => ({
+  PaymentWatcherUncontrolled: (props: Record<string, unknown>) => {
+    mockPaymentWatcher(props);
+    return null;
+  },
+}));
+
 describe("InvoiceDetailPage — dates", () => {
   it("shows 'Date Sent:' label with formatted date", async () => {
     render(await InvoiceDetailPage({ params: Promise.resolve({ id: "inv-abc" }) }));
@@ -76,6 +84,66 @@ describe("InvoiceDetailPage — dates", () => {
     );
     render(await InvoiceDetailPage({ params: Promise.resolve({ id: "inv-abc" }) }));
     expect(screen.getByText(/no due date/i)).toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDetailPage — PaymentWatcher gating (v1.4.12 hotfix)", () => {
+  beforeEach(() => mockPaymentWatcher.mockClear());
+
+  it("does NOT mount PaymentWatcher for a draft with a BTC address", async () => {
+    const { createClient } = await import("@/lib/supabase/server");
+    vi.mocked(createClient).mockResolvedValueOnce(
+      makeSupabaseMock({
+        ...BASE_INVOICE,
+        status: "draft",
+        accepts_bitcoin: true,
+        btc_address: "tb1qtest",
+      }) as unknown as Awaited<ReturnType<typeof createClient>>,
+    );
+    render(await InvoiceDetailPage({ params: Promise.resolve({ id: "inv-abc" }) }));
+    expect(mockPaymentWatcher).not.toHaveBeenCalled();
+  });
+
+  it("does NOT mount PaymentWatcher for an archived invoice", async () => {
+    const { createClient } = await import("@/lib/supabase/server");
+    vi.mocked(createClient).mockResolvedValueOnce(
+      makeSupabaseMock({
+        ...BASE_INVOICE,
+        status: "archived",
+        accepts_bitcoin: true,
+        btc_address: "tb1qtest",
+      }) as unknown as Awaited<ReturnType<typeof createClient>>,
+    );
+    render(await InvoiceDetailPage({ params: Promise.resolve({ id: "inv-abc" }) }));
+    expect(mockPaymentWatcher).not.toHaveBeenCalled();
+  });
+
+  it("DOES mount PaymentWatcher for a pending invoice with a BTC address", async () => {
+    const { createClient } = await import("@/lib/supabase/server");
+    vi.mocked(createClient).mockResolvedValueOnce(
+      makeSupabaseMock({
+        ...BASE_INVOICE,
+        status: "pending",
+        accepts_bitcoin: true,
+        btc_address: "tb1qtest",
+      }) as unknown as Awaited<ReturnType<typeof createClient>>,
+    );
+    render(await InvoiceDetailPage({ params: Promise.resolve({ id: "inv-abc" }) }));
+    expect(mockPaymentWatcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("DOES mount PaymentWatcher for an overdue invoice (still payable)", async () => {
+    const { createClient } = await import("@/lib/supabase/server");
+    vi.mocked(createClient).mockResolvedValueOnce(
+      makeSupabaseMock({
+        ...BASE_INVOICE,
+        status: "overdue",
+        accepts_bitcoin: true,
+        btc_address: "tb1qtest",
+      }) as unknown as Awaited<ReturnType<typeof createClient>>,
+    );
+    render(await InvoiceDetailPage({ params: Promise.resolve({ id: "inv-abc" }) }));
+    expect(mockPaymentWatcher).toHaveBeenCalledTimes(1);
   });
 });
 

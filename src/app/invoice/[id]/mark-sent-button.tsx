@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { fetchAddressTxs, txPaysToAddress } from "@/lib/mempool";
-import { getMempoolBaseUrl } from "@/lib/btc-network";
+import { mempoolAddressUrl } from "@/lib/btc-network";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -253,7 +253,7 @@ function TimedOutView({ btcAddress }: { btcAddress: string }) {
       <div className="text-sm">
         <a
           id="invoice-view--mempool-link"
-          href={`${getMempoolBaseUrl()}/address/${btcAddress}`}
+          href={mempoolAddressUrl(btcAddress)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-primary underline underline-offset-4 hover:no-underline"
