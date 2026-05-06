@@ -21,7 +21,11 @@ function unconfirmedTx(txid: string, address: string): MempoolTx {
 }
 
 describe("decidePaymentSchedule — pre-mempool (status=pending, mempool_seen_at=null)", () => {
-  it("after attempt 0 with no paying tx, schedules next check 5 minutes out and increments stage_attempt", () => {
+  // v1.4.13.5 schedule: [15s (publish-time), 30s, 60s, 2min, 5min, 10min, 30min].
+  // Pre-v1.4.13.5 was [15s, 5min, 10min, 30min] — the post-first-miss leap to
+  // 5min meant tx broadcasts that mempool.space indexed at t=60–120s sat
+  // undetected by cron until t=300s. New schedule fills in the gap.
+  it("after attempt 0 with no paying tx, schedules next check 30s out and increments stage_attempt (v1.4.13.5)", () => {
     const decision = decidePaymentSchedule(
       {
         status: "pending",
@@ -37,29 +41,12 @@ describe("decidePaymentSchedule — pre-mempool (status=pending, mempool_seen_at
       newStatus: "pending",
       newMempoolSeenAt: null,
       newStageAttempt: 1,
-      newNextCheckAt: new Date(NOW.getTime() + 5 * 60_000).toISOString(),
+      newNextCheckAt: new Date(NOW.getTime() + 30_000).toISOString(),
       detectedTxid: null,
     });
   });
 
-  it("after attempt 3 (final pre-mempool) with no paying tx, stops polling", () => {
-    const decision = decidePaymentSchedule(
-      {
-        status: "pending",
-        btc_address: "bc1qaddr",
-        mempool_seen_at: null,
-        stage_attempt: 3,
-      },
-      [],
-      NOW
-    );
-
-    expect(decision.newStatus).toBe("pending");
-    expect(decision.newNextCheckAt).toBeNull();
-    expect(decision.detectedTxid).toBeNull();
-  });
-
-  it("after attempt 1 with no paying tx, schedules next check 10 minutes out", () => {
+  it("after attempt 1 with no paying tx, schedules next check 60s out (v1.4.13.5)", () => {
     const decision = decidePaymentSchedule(
       {
         status: "pending",
@@ -72,7 +59,56 @@ describe("decidePaymentSchedule — pre-mempool (status=pending, mempool_seen_at
     );
 
     expect(decision.newStageAttempt).toBe(2);
-    expect(decision.newNextCheckAt).toBe(new Date(NOW.getTime() + 10 * 60_000).toISOString());
+    expect(decision.newNextCheckAt).toBe(new Date(NOW.getTime() + 60_000).toISOString());
+  });
+
+  it("after attempt 2 with no paying tx, schedules next check 2min out (v1.4.13.5)", () => {
+    const decision = decidePaymentSchedule(
+      {
+        status: "pending",
+        btc_address: "bc1qaddr",
+        mempool_seen_at: null,
+        stage_attempt: 2,
+      },
+      [],
+      NOW
+    );
+
+    expect(decision.newStageAttempt).toBe(3);
+    expect(decision.newNextCheckAt).toBe(new Date(NOW.getTime() + 2 * 60_000).toISOString());
+  });
+
+  it("after attempt 3 with no paying tx, schedules next check 5min out (v1.4.13.5)", () => {
+    const decision = decidePaymentSchedule(
+      {
+        status: "pending",
+        btc_address: "bc1qaddr",
+        mempool_seen_at: null,
+        stage_attempt: 3,
+      },
+      [],
+      NOW
+    );
+
+    expect(decision.newStageAttempt).toBe(4);
+    expect(decision.newNextCheckAt).toBe(new Date(NOW.getTime() + 5 * 60_000).toISOString());
+  });
+
+  it("after attempt 6 (final pre-mempool, was attempt 3 pre-v1.4.13.5) with no paying tx, stops polling", () => {
+    const decision = decidePaymentSchedule(
+      {
+        status: "pending",
+        btc_address: "bc1qaddr",
+        mempool_seen_at: null,
+        stage_attempt: 6,
+      },
+      [],
+      NOW
+    );
+
+    expect(decision.newStatus).toBe("pending");
+    expect(decision.newNextCheckAt).toBeNull();
+    expect(decision.detectedTxid).toBeNull();
   });
 
   it("with an unconfirmed paying tx, transitions pending → payment_detected, resets stage_attempt to 0, sets mempool_seen_at, schedules +10m", () => {
@@ -127,7 +163,8 @@ describe("decidePaymentSchedule — pre-mempool (status=pending, mempool_seen_at
 
     expect(decision.newStatus).toBe("pending");
     expect(decision.detectedTxid).toBeNull();
-    expect(decision.newNextCheckAt).toBe(new Date(NOW.getTime() + 5 * 60_000).toISOString());
+    // v1.4.13.5: attempt-0 retry is now 30s (was 5min)
+    expect(decision.newNextCheckAt).toBe(new Date(NOW.getTime() + 30_000).toISOString());
   });
 });
 

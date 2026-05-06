@@ -29,13 +29,28 @@ function fmtCurrency(amount: number, currency: string) {
 
 export function InvoicePaymentView({ invoice, btcPrice }: Props) {
   const [status, setStatus] = useState<Invoice["status"]>(invoice.status);
+  // v1.4.13: hold txid in client state so detection (from the watcher OR the
+  // realtime UPDATE) renders the mempool link without a manual refresh.
+  const [btcTxid, setBtcTxid] = useState<string | null>(invoice.btc_txid);
   const [userRevealedPayment, setUserRevealedPayment] = useState(false);
+
+  const handleWatcherStatusChange = useCallback(
+    (s: Invoice["status"], txid?: string) => {
+      setStatus(s);
+      if (txid) setBtcTxid(txid);
+    },
+    [],
+  );
 
   // Realtime fallback for cron-driven status changes the on-page mempool watcher
   // can't observe. The watcher remains the fastest path when the payer is here.
-  const handleRealtimeUpdate = useCallback((next: { status?: Invoice["status"] }) => {
-    if (next.status) setStatus(next.status);
-  }, []);
+  const handleRealtimeUpdate = useCallback(
+    (next: { status?: Invoice["status"]; btc_txid?: string | null }) => {
+      if (next.status) setStatus(next.status);
+      if (next.btc_txid) setBtcTxid(next.btc_txid);
+    },
+    [],
+  );
   usePublicInvoiceRealtime(invoice.id, handleRealtimeUpdate);
 
   // Auto-reveal payment details for invoices that aren't awaiting payment (already
@@ -83,7 +98,8 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
                 invoiceId={invoice.id}
                 btcAddress={invoice.btc_address}
                 status={status}
-                onStatusChange={setStatus}
+                onStatusChange={handleWatcherStatusChange}
+                paymentRevealed={showPaymentDetails}
               />
             ) : (
               <InvoiceStatusBadge status={status} id="invoice-view--status" />
@@ -188,17 +204,17 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
                       <CopyButton text={invoice.btc_address!} label="Copy BTC address" />
                     </div>
                   </div>
-                  {invoice.btc_txid && (
+                  {btcTxid && (
                     <div className="space-y-0.5">
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Transaction ID</p>
                       <a
                         id="invoice-view--btc-txid"
-                        href={`${getMempoolBaseUrl()}/tx/${invoice.btc_txid}`}
+                        href={`${getMempoolBaseUrl()}/tx/${btcTxid}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs font-mono break-all text-blue-500 hover:underline"
                       >
-                        {invoice.btc_txid}
+                        {btcTxid}
                       </a>
                     </div>
                   )}
@@ -236,17 +252,17 @@ export function InvoicePaymentView({ invoice, btcPrice }: Props) {
               Bitcoin address: <span className="font-mono text-xs">{invoice.btc_address}</span>
             </p>
             <p className="text-xs text-muted-foreground">BTC price unavailable — please calculate the amount manually.</p>
-            {invoice.btc_txid && (
+            {btcTxid && (
               <p className="text-xs text-muted-foreground">
                 Transaction:{" "}
                 <a
                   id="invoice-view--btc-txid-fallback"
-                  href={`${getMempoolBaseUrl()}/tx/${invoice.btc_txid}`}
+                  href={`${getMempoolBaseUrl()}/tx/${btcTxid}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-mono text-blue-500 hover:underline"
                 >
-                  {invoice.btc_txid}
+                  {btcTxid}
                 </a>
               </p>
             )}

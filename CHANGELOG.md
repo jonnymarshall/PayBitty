@@ -5,6 +5,141 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.13.7] - 2026-05-05
+
+### Changed
+
+- **`PaymentWatcher` no longer POSTs `payment-status` redundantly when the local status is already `payment_detected`** (or `paid`). Real-world testing on TEST 10 (already-detected invoices) showed 12 wasted POSTs per active payer over a 5-minute polling window: every active-poll tick GETted the same unconfirmed tx and re-POSTed `payment_detected` to our own backend. The route is idempotent, so this was harmless to data — but it was pointless network. Now the POST only fires on a real transition (`pending`/`overdue` → `payment_detected`, or any state → `paid`).
+- Added a `statusRef` so the active-poll closure can read the latest status without re-running the effect (which would tear down the WebSocket every time the status changed).
+
+### Notes
+
+- The GET to mempool.space still fires on every poll — that's needed to detect the `payment_detected` → `paid` transition (block confirmation), which is the meaningful event we're watching for.
+- Symmetric fix applied to both the REST poll branch and the WebSocket `address-transactions` branch in `payment-watcher.tsx`.
+
+## [1.4.13.6] - 2026-05-05
+
+### Changed
+
+- **`saveDraft` and `updateDraft` now run the same address-uniqueness check that `loadAndAuthorise` (publish path) has run since v1.4.12.** Previously, drafts could be saved with a BTC address already used on another non-draft invoice in the user's account; the conflict only surfaced when the user later tried to publish, producing a confusing fail-late UX (save → ✅, publish → ❌). Now both paths reject up-front with the same message: `btc_address: This bitcoin address has already been used on invoice <ref>. Please provide a unique address.`
+- Uniqueness check extracted into a reusable `assertAddressUniqueness(supabase, address, excludeInvoiceId?)` helper; called from `saveDraft` (no excludeId), `updateDraft` (excludes the row being edited), and `loadAndAuthorise` (excludes the row being published).
+
+### Notes
+
+- This finishes the symmetry begun in v1.4.12: both the freshness check (no on-chain history) and the uniqueness check (no other active paybitty invoice using this address) now fire at save time as well as publish time. No more save-then-publish mystery rejections.
+- One extra DB query per save when `accepts_bitcoin` is on. Indexed lookup on `btc_address`, sub-millisecond.
+
+## [1.4.13.5] - 2026-05-05
+
+### Changed
+
+- **Pre-mempool cron retry cadence tightened** in `src/lib/invoices/payment-schedule.ts`. Real-world testing surfaced a long-tail dead zone: when the cron's first poll at t=60s missed (because mempool.space's testnet indexer hadn't yet surfaced the broadcast tx), the next attempt was 5 minutes out. For a payer who closed the tab right after broadcasting, this meant ~5 minutes before the dashboard or detail page reflected the payment. Schedule:
+
+  | Attempt | Pre-v1.4.13.5 (`stage_attempt` → next delay) | v1.4.13.5 (`stage_attempt` → next delay) |
+  |---|---|---|
+  | publish-time | +15 s | +15 s (unchanged) |
+  | 0 → 1 | +5 min | **+30 s** |
+  | 1 → 2 | +10 min | **+60 s** |
+  | 2 → 3 | +30 min | **+2 min** |
+  | 3 → 4 | stop | **+5 min** |
+  | 4 → 5 | — | +10 min |
+  | 5 → 6 | — | +30 min |
+  | 6 → 7 | — | stop |
+
+- Practical effect: cron-side polls in the first 5 minutes go from **2** (t=60s, t=300s) to **4–5** (t=60s, t=120s, t=180s, t=240s, t=300s — depending on cron tick alignment). For a typical testnet broadcast indexed at t=60–120s, detection now lands within ~2 min instead of ~5 min.
+
+### Notes
+
+- **API spend cost:** ~2 extra mempool.space requests per pending invoice per 5-min window. From a single Vercel-region IP. Headroom against mempool.space's free-tier ~60 req/min/IP limit is comfortable up to several hundred concurrent pending invoices.
+- **Total polling lifetime extended:** previous schedule stopped at attempt 4 (~46 min cumulative). New schedule stops at attempt 7 (~48 min cumulative — similar overall window, just denser early).
+
+## [1.4.13.4] - 2026-05-05
+
+### Changed
+
+- **Active alongside-WS poll switched from flat 5 s × 60 to phased cadence.** Total polls per real payment attempt drop from 60 to **25**, while the first minute (the dominant wallet-pay window) is unchanged at 5 s. The schedule mirrors the "Mark as Sent" button's front-loaded design but anchored on reveal instead of click:
+
+  | Phase | Interval | Count | Phase duration | Cumulative |
+  |---|---|---|---|---|
+  | 1 | 5 s  | 12 | 60 s | 12 polls / 60 s |
+  | 2 | 10 s |  6 | 60 s | 18 polls / 120 s |
+  | 3 | 15 s |  4 | 60 s | 22 polls / 180 s |
+  | 4 | 30 s |  2 | 60 s | 24 polls / 240 s |
+  | 5 | 60 s |  1 | 60 s | **25 polls / 300 s — then stops** |
+
+- Schedule lives in `ACTIVE_POLL_PHASES` in `src/app/invoice/[id]/payment-watcher.tsx`. Cadence selection is via pure helper `nextActivePollIntervalMs(count)`.
+
+### Notes
+
+- **API-spend savings:** under the v1.4.13.3 flat schedule a revealed payer who never paid would generate 60 mempool.space requests in 5 minutes. v1.4.13.4 cuts that to 25. For 100 daily payment attempts this is 3 500 fewer requests/day per active region.
+- **Detection latency unchanged in the dominant window:** the first 60 seconds after reveal still polls at 5 s, matching the typical mobile-wallet pay flow. Slower payers (1–5 min after reveal) get progressively coarser polling but still get coverage.
+- **Visibility pause unchanged:** all five phases respect `document.visibilityState`. Hidden tabs still pause polling and resume from the same poll count when visible.
+
+## [1.4.13.3] - 2026-05-05
+
+### Removed
+
+- **Vestigial v1.4.13 WebSocket-close exponential-backoff fallback removed.** Once the v1.4.13.1 active alongside-WS poll (5s, capped at 60) was in place, the older 2s/4s/8s/16s/... fallback was redundant — for revealed payers it overlapped with the active poll producing irregular polling clusters (1s/3s/4s gaps observed in real-world testing); for unrevealed payers v1.4.13.2 already gated it off entirely. With this patch, the only client-side polling path is the active alongside-WS poll. Result: clean 5s cadence after reveal, no overlap, predictable 5-min auto-stop.
+
+### Notes
+
+- **Behaviour matrix (final v1.4.13.x):**
+  - `paymentRevealed=false` + WS alive → WS only.
+  - `paymentRevealed=false` + WS dead → no client polling. Cron is the safety net.
+  - `paymentRevealed=true` + WS alive → active poll every 5s, capped at 60 polls (~5 min visible time) + WS.
+  - `paymentRevealed=true` + WS dead → active poll every 5s, capped at 60 polls. **No exp-backoff fallback** ← removed in v1.4.13.3.
+- After the active-poll cap is hit, polling stops entirely. The WS may still push if alive; otherwise the cron is the safety net (next pre-mempool check at +5min/10min/30min from publish per `PRE_MEMPOOL_DELAYS_MS`).
+
+## [1.4.13.2] - 2026-05-05
+
+### Changed
+
+- **WebSocket-close fallback polling now also gated on `paymentRevealed`.** Previously, when mempool.space's WebSocket died (which happens routinely on testnet ~60s after open), the v1.4.13 exponential-backoff REST fallback would start polling indefinitely — even for window-shoppers who hadn't shown any intent to pay. With many concurrent viewers this compounded into wasted API spend. The fallback now no-ops while `paymentRevealed=false`; for unrevealed visitors we rely entirely on the server-side cron sweep, same as if they'd never opened the page. Symmetric with the v1.4.13.1 active alongside-WS poll, which already had this gating.
+
+### Notes
+
+- **Behaviour matrix now:**
+  - Revealed + WS alive → active poll (5s × 60). Same as v1.4.13.1.
+  - Revealed + WS dead → active poll + exp-backoff fallback. Same as v1.4.13.1.
+  - Not revealed + WS alive → WS-only. Same as v1.4.13.1.
+  - **Not revealed + WS dead → no client polling. Cron is the safety net.** ← changed from v1.4.13.1, was "exp-backoff fallback forever".
+
+## [1.4.13.1] - 2026-05-04
+
+### Added
+
+- **Active alongside-WebSocket REST poll on the public payer page**, gated on payer commitment + tab visibility. Closes the "WS connected but silently missing pushes" gap that mempool.space's testnet WebSocket occasionally produces:
+  - **When it runs:** only after the payer reveals the BTC address (clicks "Pay now in Bitcoin", or the invoice arrives already detected/paid). Window-shoppers cause zero polling load.
+  - **Cadence:** one REST poll every 5 s, in parallel with the WebSocket. Caps at 60 polls (~5 minutes of *visible* polling time, then stops — relies on the WS + cron after that).
+  - **Visibility-aware:** polling pauses immediately when `document.visibilityState === 'hidden'` and resumes when the tab returns. Prevents background tabs from pinging mempool.space forever.
+- **Visibility gating extended to the v1.4.13 WebSocket-close fallback** as well — if the payer tabs away while the WS is dead and the exponential backoff is mid-cycle, the timer pauses and resumes on visibility return. Same pattern as the new active poll for consistency.
+
+### Changed
+
+- `PaymentWatcher` now accepts a `paymentRevealed?: boolean` prop, wired from `InvoicePaymentView` (`showPaymentDetails`). Default is `false` so the WS-only mode is the default for any other caller.
+
+### Notes
+
+- **Why this is small even at scale.** The mempool.space rate limit is per-IP. Page polling spreads across each viewer's own IP, while the cron polling all comes from one Vercel-region IP — so client-side polling is *much* cheaper to scale than server-side. Visibility gating is the highest-leverage saver here: it eliminates background-tab pings entirely.
+- **Detection latency now (typical, page open + revealed):** 0–5 s. The active poll catches anything mempool.space's API has indexed even if their WS push silently dropped.
+
+## [1.4.13] - 2026-05-04
+
+### Changed
+
+- **Payment detection latency narrowed for the "paid but didn't click the button" case.** When a payer broadcasts a tx and either closes the tab or has a flaky mempool WebSocket, end-to-end detection used to land in 60–120 s. Two cadence tightenings bring this to **p50 < 15 s, p95 < 60 s**:
+  - `PaymentWatcher`'s WebSocket-fallback REST polling now starts at **2 s** (was 10 s) and doubles from there. Mirrors the front-loaded cadence the "Mark as Sent" button already used, so a tab-open payer with a dead socket sees detection on the same timeline.
+  - `publishStatePatch` now schedules the first cron-side mempool poll at **publish + 15 s** (was +1 min). The publish action and `decidePaymentSchedule` now share `PRE_MEMPOOL_DELAYS_MS[0]` as a single source of truth — index 0 is the publish-to-first-check delay, indices 1+ remain the post-attempt-0 retry intervals (5/10/30 min).
+- **Payer's mempool socket no longer rate-limits itself away.** The 10 s WebSocket-fallback was conservative because we feared mempool.space rate limits, but the button-clicked path was already pushing 2 s polling to the same endpoint without issues. No new ceiling needed.
+
+### Fixed
+
+- **Public payer page now renders the txid + mempool.space link the moment a payment is detected — no manual refresh required.** Previously `PaymentWatcher.onStatusChange` only forwarded the new status, dropping the `txid` it had already POSTed to `/api/invoices/[id]/payment-status`. The callback signature is now `(status, txid?)`, and `InvoicePaymentView` holds the txid in client state and consumes it in two complementary places: from the watcher (instant, no Supabase realtime needed) and from the realtime payload (covers the cron-only path when the payer's tab returns from the background). Both render sites — the primary BTC section and the BTC-price-error fallback — read from local state instead of the SSR prop.
+
+### Notes
+
+- Vercel Cron's per-job cadence is 1/minute on the deployed plan, so the worst-case "tab closed + mempool socket missed it" first-poll lands at **t+15 s..t+75 s** post-publish (15 s threshold + up to 60 s waiting for the next cron tick). Going below this would require a different scheduler — out of scope for v1.4.13.
+
 ## [1.4.12] - 2026-05-04
 
 ### Added
