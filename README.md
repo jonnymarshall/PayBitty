@@ -30,7 +30,15 @@ Both pages need to update **as soon as the status changes**, no matter who trigg
 
 ### How a payment gets noticed (the three watchers)
 
-There are exactly **three things** that can spot an incoming payment. Faster ones first:
+There are exactly **three things** that can spot an incoming payment. Faster ones first.
+
+> **Quick reference — what runs when (the three "payer on the page" states):**
+>
+> | State | What's running |
+> |---|---|
+> | Page open, hasn't clicked "Pay now in Bitcoin" (window-shopper) | mempool.space WebSocket only. **No REST polling.** |
+> | Page open, clicked "Pay now in Bitcoin" (revealed), hasn't clicked "Mark as Sent" | WebSocket + **phased active poll**: 5 s × 12, 10 s × 6, 15 s × 4, 30 s × 2, 60 s × 1 = **25 polls over 5 minutes** then stops. (v1.4.13.4) |
+> | Page open, clicked "Mark as Payment Sent" | WebSocket + the dialog's own front-loaded burst: 2 s × 5, 3 s × 5, 5 s × 3, 10 s × 2 = 15 polls over 60 s. |
 
 #### 1. The mempool socket on the payer's page (sub-second, when it works)
 
@@ -49,7 +57,7 @@ There are **two clocks** here, and it's worth keeping them straight:
 
 Each invoice's schedule is **front-loaded**, then tapers off:
 
-- **Right after publish, no tx in mempool yet** — checks at **+1 min, +5 min, +10 min, +30 min**, then **stops**. The invoice hibernates if nothing arrives in the first ~46 minutes.
+- **Right after publish, no tx in mempool yet** — checks at **+15 s, +30 s, +60 s, +2 min, +5 min, +10 min, +30 min**, then **stops**. The invoice hibernates if nothing arrives in the first ~48 minutes. (The +15 s first-check is v1.4.13; the dense early retries are v1.4.13.5 — they replace the previous v1.4.13 schedule of `[15s, 5min, 10min, 30min]`, which left a 5-minute gap after the first cron miss.)
 - **Once a tx hits the mempool** — schedule speeds back up: every 10 min × 3, then every 1 h × 6, then every 4 h × 12, then every 8 h × 24, over a total window of ~11 days.
 - **A confirmed tx at any point** promotes the invoice straight to **Paid** and the schedule stops.
 
@@ -57,11 +65,27 @@ So: the cron itself runs every minute (system-wide), but a given invoice is **no
 
 This is what catches payments while everyone's tabs are closed. It's slower than the mempool socket (up to ~60 s for the next cron tick + however long mempool.space takes to see the tx + the per-invoice schedule gap) but it's tireless and unattended.
 
-#### 3. The page's REST poll (only if the socket dies)
+#### 3. The page's active REST poll (v1.4.13.1+, only after the payer clicks "Pay now in Bitcoin")
 
-If the mempool WebSocket drops (network hiccup, mempool.space restart), the payer's page falls back to asking mempool.space "any new txs?" every 10 seconds, doubling the gap each time it gets nothing back, capped at ~10 minutes.
+mempool.space's WebSocket sometimes appears connected but silently misses pushing a tx event to us — particularly on testnet. And the WS routinely dies after ~60s of inactivity. To close both gaps, the page fires REST polls **in parallel with the WebSocket**, on a **phased cadence** that mirrors the "Mark as Sent" button's front-loaded approach:
 
-This is a backup, not a primary. **Most of the time you won't see it run.**
+| Phase | Interval | Count | Phase duration | Cumulative |
+|---|---|---|---|---|
+| 1 | 5 s  | 12 | 60 s | 12 polls / 60 s |
+| 2 | 10 s |  6 | 60 s | 18 polls / 120 s |
+| 3 | 15 s |  4 | 60 s | 22 polls / 180 s |
+| 4 | 30 s |  2 | 60 s | 24 polls / 240 s |
+| 5 | 60 s |  1 | 60 s | **25 polls / 300 s — then stops** |
+
+The first minute (the dominant wallet-pay window) keeps the fast 5 s cadence so a typical pay-and-watch flow gets sub-5-second detection. After 5 minutes of unsuccessful polling, the page stops polling entirely and falls back to the WebSocket (if alive) and the cron.
+
+Two preconditions for any of these polls to fire:
+- The payer has clicked "Pay now in Bitcoin" (or the invoice is already detected/paid), AND
+- The tab is currently visible.
+
+A window-shopper viewing a published invoice but never revealing the BTC details causes **zero** client-side polling load — only payers who've signalled intent to pay generate this traffic.
+
+> **History:** v1.4.13 added a 2 s exp-backoff REST fallback fired only on WS-close. v1.4.13.1 added the always-on (when revealed) 5 s active poll. v1.4.13.2 gated the v1.4.13 fallback to revealed payers only. v1.4.13.3 removed the v1.4.13 fallback entirely — it overlapped with the active poll. v1.4.13.4 swapped the flat 5 s × 60 cadence for the phased 25-poll schedule above.
 
 ### How the badge moves (the push to your screen)
 
@@ -73,17 +97,22 @@ So: a single status change can take three hops (mempool socket → API → datab
 
 ### Why a payment might take 30+ seconds to show up
 
-The most common reason is **the mempool socket didn't catch it**, so you're waiting for the cron's 1-minute tick to find it instead. That happens when:
+The most common reason is **the mempool socket didn't catch it**, so you're waiting for the cron tick to find it instead. That happens when:
 
 - The mempool socket connected but mempool.space hadn't yet seen the broadcast tx when the page asked. This is genuinely common — propagation takes 5–30 s.
 - The mempool socket disconnected and the REST fallback hadn't been waiting long enough.
 - You're on testnet, where mempool.space is slower and less reliable than mainnet.
 
-When this happens, the cron eventually finds it (max 60 s) → updates the database → Realtime pushes to the page → badge flips. Total: 30–90 s instead of <1 s.
+When this happens, the cron eventually finds it → updates the database → Realtime pushes to the page → badge flips.
+
+**Latency targets (v1.4.13):**
+
+- **p50 < 15 s** — including the "paid but didn't click the button" case. The first cron-side check fires 15 s post-publish (down from 60 s).
+- **p95 < 60 s** — the worst case is a closed tab + a missed mempool socket: bounded by the 1/min Vercel Cron tick falling after the +15 s threshold, so first poll lands at +15 s..+75 s.
 
 ### What happens when nothing is open
 
-Just the cron, plus a tapering schedule. After publish, checks happen at +1 min, +5 min, +10 min, +30 min, then **stop** if nothing has hit the mempool — at that point we assume the payer has abandoned the invoice. As soon as a tx **does** hit the mempool, the cron speeds back up: 10 min ×3, then 1 h ×6, then 4 h ×12, then 8 h ×24, then stop after ~11 days. A confirmation at any point promotes the invoice straight to **Paid**.
+Just the cron, plus a tapering schedule. After publish, checks happen at **+15 s** (v1.4.13: was +1 min), then +5 min, +10 min, +30 min, then **stop** if nothing has hit the mempool — at that point we assume the payer has abandoned the invoice. As soon as a tx **does** hit the mempool, the cron speeds back up: 10 min ×3, then 1 h ×6, then 4 h ×12, then 8 h ×24, then stop after ~11 days. A confirmation at any point promotes the invoice straight to **Paid**.
 
 ### Two extras
 
@@ -121,7 +150,8 @@ For the implementation specifics — file paths, exact intervals, code reference
 
 | Scenario                                                           | Active mechanism                         | Frequency                                     | Time-to-detect (typical)     |
 |--------------------------------------------------------------------|------------------------------------------|-----------------------------------------------|------------------------------|
-| (A) Payer on `/invoice/[id]`, has **not** clicked "Payment Sent"   | Mempool WebSocket (+ polling fallback)   | Real-time push; fallback 10s → doubles → ~10m | < 1 second (push)            |
+| (A1) Payer on `/invoice/[id]`, has **not** clicked "Pay now in Bitcoin" | Mempool WebSocket only | Real-time push; no client REST polling | < 1 second (push) |
+| (A2) Payer clicked "Pay now in Bitcoin", has **not** clicked "Mark as Sent" | Mempool WebSocket + phased active alongside-WS poll | Real-time push; phased poll: 5s×12, 10s×6, 15s×4, 30s×2, 60s×1 = 25 polls / 5 min then stops (v1.4.13.4) | < 1 second (push) or ≤ 5 s (alongside poll) |
 | (B) Payer on `/invoice/[id]`, **clicks** "Mark as Payment Sent"    | Tiered active polling for 60 seconds     | 5×2s + 5×3s + 3×5s + 2×10s = 15 polls in 60s  | 2–10 seconds                 |
 | (C) Nobody has a page open                                         | Vercel Cron (background poll)            | Every minute, per-invoice back-off schedule   | 1–30 minutes pre-mempool; 10 min – 8 h post-mempool |
 | (D) Owner on `/invoices` or `/invoices/[id]`                       | Supabase Realtime subscription           | Pushed as soon as any other path updates DB   | < 1 second after DB update   |
@@ -138,8 +168,18 @@ File: `src/app/invoice/[id]/payment-watcher.tsx`
 1. Opens a **WebSocket to mempool.space** and subscribes to the invoice's BTC address.
 2. On a **0-conf** event (tx broadcast) → POST `/api/invoices/[id]/payment-status` with `status=payment_detected`.
 3. On a **1-conf** event (first confirmation) → POST with `status=paid`.
-4. Fallback: if the WebSocket disconnects, **exponential-backoff polling** starts at 10 s, doubles each failed check, and caps near 10 min.
+4. **Active alongside-WebSocket poll (v1.4.13.1, refined through v1.4.13.4):** when `paymentRevealed=true` (payer has clicked "Pay now in Bitcoin", or the invoice is already in a detected/paid state), the watcher *also* fires REST polls in parallel with the WS, on the v1.4.13.4 phased schedule (5 s × 12, then 10 s × 6, then 15 s × 4, then 30 s × 2, then 60 s × 1 = 25 polls over 5 min). Closes the "WS connected but silently missing pushes" gap. Stops entirely once all phases are exhausted; pauses while the tab is hidden. **This is the only client-side polling path.** The v1.4.13 exp-backoff fallback was removed in v1.4.13.3 — it was vestigial once the active poll covered the same cases.
 5. The WebSocket is closed once the invoice reaches `paid`.
+6. **Detected txid is pushed back to the view** via `onStatusChange(status, txid)`, so the public payer page can render the mempool.space transaction link the moment we report a payment — no manual refresh, no Supabase realtime roundtrip required (v1.4.13).
+
+**Behaviour matrix for path A (final, v1.4.13.4):**
+
+| Page state | WS state | Client-side polling |
+|---|---|---|
+| Window-shopper (not clicked "Pay now in Bitcoin") | alive | none — WS only |
+| Window-shopper | dead | **none — cron is the safety net** |
+| Revealed (clicked "Pay now in Bitcoin"), NOT clicked "Mark as Sent" | alive or dead | **Phased active poll: 5 s × 12 → 10 s × 6 → 15 s × 4 → 30 s × 2 → 60 s × 1 = 25 polls over 5 min, then stop.** Same cadence regardless of WS state. |
+| Clicked "Mark as Sent" | (n/a — dialog handles this) | Dialog's front-loaded 60 s burst (path B). The active poll continues underneath. |
 
 **Latency:** effectively instant (push). Fallback polling only kicks in if the socket dies.
 
@@ -172,7 +212,7 @@ The detected dialog also **auto-pops** on any `pending/overdue → payment_detec
 
 Files: `src/app/api/cron/payment-sweep/route.ts` + `src/lib/invoices/payment-schedule.ts` + `vercel.json`.
 
-A Vercel Cron hits `/api/cron/payment-sweep` **every minute** (`* * * * *`). The endpoint:
+A Vercel Cron hits `/api/cron/payment-sweep` **every minute** (`* * * * *`). **Note: Vercel Cron only fires in deployed environments — locally (`npm run dev`), the route exists but nothing calls it automatically.** For local manual testing, run the curl loop documented in `manual-tests/v1.4.13-payment-detection-latency.md` (Setup → Cron requirement). The endpoint:
 
 1. Bearer-auths the incoming request against `CRON_SECRET`.
 2. Fetches up to **50 invoices** where `next_check_at <= now()` AND `status IN ('pending', 'payment_detected')`.
@@ -183,15 +223,22 @@ A Vercel Cron hits `/api/cron/payment-sweep` **every minute** (`* * * * *`). The
 
 The per-invoice schedule is **two-stage**:
 
-**Pre-mempool** (`mempool_seen_at IS NULL` — nothing broadcast yet). After publish, checks at +1 min, +5 min, +10 min, +30 min. If still nothing by ~46 minutes total, polling stops for that invoice (the passive watcher and the fast-path API still work if the payer returns to the page).
+**Pre-mempool** (`mempool_seen_at IS NULL` — nothing broadcast yet). After publish, checks at +15 s, +30 s, +60 s, +2 min, +5 min, +10 min, +30 min. If still nothing by ~48 minutes total, polling stops for that invoice (the passive watcher and the fast-path API still work if the payer returns to the page). The intervals live in `PRE_MEMPOOL_DELAYS_MS` (`src/lib/invoices/payment-schedule.ts`); index 0 is the publish → first-check delay, consumed by `publishStatePatch` in `src/app/(dashboard)/invoices/actions.ts` so there is a single source of truth.
 
 | Attempt | Delay from previous | Elapsed since publish |
 |---------|---------------------|-----------------------|
-| 1       | + 1 min             | 1 min                 |
-| 2       | + 5 min             | 6 min                 |
-| 3       | + 10 min            | 16 min                |
-| 4       | + 30 min            | 46 min                |
+| 1       | + 15 s              | 15 s                  |
+| 2       | + 30 s              | 45 s                  |
+| 3       | + 60 s              | 1 min 45 s            |
+| 4       | + 2 min             | 3 min 45 s            |
+| 5       | + 5 min             | 8 min 45 s            |
+| 6       | + 10 min            | 18 min 45 s           |
+| 7       | + 30 min            | 48 min 45 s           |
 | —       | stop (`next_check_at = null`) | —           |
+
+> **Note on the cron tick.** Vercel Cron fires the `payment-sweep` route exactly once per minute. The schedule's per-attempt delay is the *earliest* moment the invoice is eligible — the actual poll lands on the next minute boundary after that. So the dense early entries (15 s, 30 s, 60 s) translate into roughly one cron poll per minute boundary in the first ~3 minutes, giving cron-side detection within ~2 minutes for a typical testnet broadcast that mempool.space indexes at t=60–120 s.
+
+> **Pre-v1.4.13.5 history.** The schedule used to be `[15 s, 5 min, 10 min, 30 min]` — i.e. only *two* polls in the first 5 minutes. If mempool.space hadn't indexed the broadcast tx by the t=60 s first-poll window (very common on testnet), the next attempt was 5 minutes out. v1.4.13.5 fills in that gap.
 
 **Post-mempool** (`mempool_seen_at IS NOT NULL` — tx broadcast but not confirmed). Cadence spreads the checks over ~11 days:
 

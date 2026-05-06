@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { InvoicePaymentView } from "./invoice-payment-view";
 import type { Invoice } from "@/lib/invoice-public";
 
@@ -7,10 +7,42 @@ vi.mock("@/lib/btc-network", () => ({
   getMempoolBaseUrl: () => "https://mempool.space",
   getMempoolWsUrl: () => "wss://mempool.space/testnet4/api/v1/ws",
 }));
-vi.mock("./payment-watcher", () => ({ PaymentWatcher: () => null }));
-vi.mock("./use-public-invoice-realtime", () => ({ usePublicInvoiceRealtime: () => {} }));
+
+// Capture the callbacks and props the view wires up so tests can drive realtime / watcher events.
+let capturedWatcherOnStatusChange:
+  | ((s: Invoice["status"], txid?: string) => void)
+  | null = null;
+let capturedWatcherPaymentRevealed: boolean | undefined = undefined;
+let capturedRealtimeOnUpdate:
+  | ((next: Partial<Invoice> & { id: string }) => void)
+  | null = null;
+
+vi.mock("./payment-watcher", () => ({
+  PaymentWatcher: (props: {
+    onStatusChange: (s: Invoice["status"], txid?: string) => void;
+    paymentRevealed?: boolean;
+  }) => {
+    capturedWatcherOnStatusChange = props.onStatusChange;
+    capturedWatcherPaymentRevealed = props.paymentRevealed;
+    return null;
+  },
+}));
+vi.mock("./use-public-invoice-realtime", () => ({
+  usePublicInvoiceRealtime: (
+    _id: string,
+    onUpdate: (next: Partial<Invoice> & { id: string }) => void,
+  ) => {
+    capturedRealtimeOnUpdate = onUpdate;
+  },
+}));
 vi.mock("@/components/btc-qr-code", () => ({ BtcQrCode: () => <div data-testid="btc-qr" /> }));
 vi.mock("./mark-sent-button", () => ({ MarkSentButton: () => null }));
+
+beforeEach(() => {
+  capturedWatcherOnStatusChange = null;
+  capturedWatcherPaymentRevealed = undefined;
+  capturedRealtimeOnUpdate = null;
+});
 
 const BASE_INVOICE: Invoice = {
   id: "inv-1",
@@ -139,5 +171,69 @@ describe("InvoicePaymentView — copy buttons", () => {
     fireEvent.click(btn);
 
     expect(writeText).toHaveBeenCalledWith("tb1qtarget");
+  });
+});
+
+describe("InvoicePaymentView — txid live-update (v1.4.13)", () => {
+  const BTC_INVOICE_PENDING: Invoice = {
+    ...BASE_INVOICE,
+    accepts_bitcoin: true,
+    btc_address: "tb1qtarget",
+    btc_txid: null,
+    status: "pending",
+  };
+
+  it("renders the mempool.space txid link the moment the watcher reports a tx — no manual refresh required", () => {
+    render(<InvoicePaymentView invoice={BTC_INVOICE_PENDING} btcPrice={50000} />);
+    expect(capturedWatcherOnStatusChange).not.toBeNull();
+    // Sanity: no txid link before detection.
+    expect(screen.queryByText(/txid-from-watcher/)).not.toBeInTheDocument();
+
+    act(() => {
+      capturedWatcherOnStatusChange?.("payment_detected", "txid-from-watcher");
+    });
+
+    const link = screen.getByRole("link", { name: /txid-from-watcher/ }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("https://mempool.space/tx/txid-from-watcher");
+  });
+
+  it("on a fresh pending invoice, watcher mounts with paymentRevealed=false (window-shopper — WS only)", () => {
+    render(<InvoicePaymentView invoice={BTC_INVOICE_PENDING} btcPrice={50000} />);
+    expect(capturedWatcherPaymentRevealed).toBe(false);
+  });
+
+  it("after the payer clicks 'Pay now in Bitcoin', watcher receives paymentRevealed=true (active alongside-WS poll engaged)", () => {
+    render(<InvoicePaymentView invoice={BTC_INVOICE_PENDING} btcPrice={50000} />);
+    expect(capturedWatcherPaymentRevealed).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: /pay now in bitcoin/i }));
+
+    expect(capturedWatcherPaymentRevealed).toBe(true);
+  });
+
+  it("when invoice is already payment_detected, watcher mounts with paymentRevealed=true (auto-revealed)", () => {
+    render(
+      <InvoicePaymentView
+        invoice={{ ...BTC_INVOICE_PENDING, status: "payment_detected" }}
+        btcPrice={50000}
+      />,
+    );
+    expect(capturedWatcherPaymentRevealed).toBe(true);
+  });
+
+  it("renders the mempool.space txid link when the realtime payload carries btc_txid (cron-only path)", () => {
+    render(<InvoicePaymentView invoice={BTC_INVOICE_PENDING} btcPrice={50000} />);
+    expect(capturedRealtimeOnUpdate).not.toBeNull();
+
+    act(() => {
+      capturedRealtimeOnUpdate?.({
+        id: "inv-1",
+        status: "payment_detected",
+        btc_txid: "txid-from-realtime",
+      });
+    });
+
+    const link = screen.getByRole("link", { name: /txid-from-realtime/ }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("https://mempool.space/tx/txid-from-realtime");
   });
 });

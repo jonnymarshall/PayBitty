@@ -63,10 +63,12 @@ function makeSupabase({
 
   // select chain: differentiate by column list
   //   select("*")          → fetch by id → .eq(id).single()
-  //   select("id, invoice_number") → uniqueness → .eq(address).neq(status).neq(id).maybeSingle()
+  //   select("id, invoice_number") → uniqueness — two variants since v1.4.13.6:
+  //     publish/update path: .eq(address).neq(status).neq(id).maybeSingle()
+  //     save path:           .eq(address).neq(status).maybeSingle()
   const maybeSingle = vi.fn().mockResolvedValue({ data: btcConflict, error: null });
   const uniqIdNeq = vi.fn().mockReturnValue({ maybeSingle });
-  const uniqStatusNeq = vi.fn().mockReturnValue({ neq: uniqIdNeq });
+  const uniqStatusNeq = vi.fn().mockReturnValue({ neq: uniqIdNeq, maybeSingle });
   const uniqAddressEq = vi.fn().mockReturnValue({ neq: uniqStatusNeq });
 
   const fetchSingle = vi.fn().mockResolvedValue({ data: fetchData, error: null });
@@ -137,6 +139,16 @@ describe("saveDraft", () => {
     expect(addressHasHistory).not.toHaveBeenCalled();
     expect(insertSingle).toHaveBeenCalled();
   });
+
+  it("rejects when the BTC address is already used on another non-draft invoice in the user's account (v1.4.13.6)", async () => {
+    const { insertSingle } = makeSupabase({
+      btcConflict: { id: "inv-prev", invoice_number: "INV-007" },
+    });
+    await expect(saveDraft(VALID_DRAFT)).rejects.toThrow(
+      /btc_address: This bitcoin address has already been used on invoice INV-007/i,
+    );
+    expect(insertSingle).not.toHaveBeenCalled();
+  });
 });
 
 describe("updateDraft", () => {
@@ -151,6 +163,19 @@ describe("updateDraft", () => {
     await expect(
       updateDraft("inv-1", { ...VALID_DRAFT, btc_address: "bc1qpoisoned" }),
     ).rejects.toThrow(/btc_address: This address has already received transactions/i);
+  });
+
+  it("rejects when updating with a BTC address already used on another non-draft invoice (v1.4.13.6)", async () => {
+    makeSupabase({
+      fetchData: draftFixture,
+      btcConflict: { id: "inv-prev", invoice_number: "INV-042" },
+    });
+    const { updateDraft } = await import("./actions");
+    await expect(
+      updateDraft("inv-1", { ...VALID_DRAFT, btc_address: "bc1qreused" }),
+    ).rejects.toThrow(
+      /btc_address: This bitcoin address has already been used on invoice INV-042/i,
+    );
   });
 });
 
@@ -290,7 +315,7 @@ describe("publishInvoice (publish-only, no email)", () => {
     warnSpy.mockRestore();
   });
 
-  it("initialises background-polling columns (next_check_at = +1m, stage_attempt = 0, mempool_seen_at = null) alongside the status change", async () => {
+  it("initialises background-polling columns (next_check_at = +15s, stage_attempt = 0, mempool_seen_at = null) alongside the status change", async () => {
     const { updateChain } = makeSupabase({ fetchData: PUBLISHABLE_INVOICE });
     const before = Date.now();
     await publishInvoice("inv-1");
@@ -300,9 +325,11 @@ describe("publishInvoice (publish-only, no email)", () => {
     expect(payload.stage_attempt).toBe(0);
     expect(payload.mempool_seen_at).toBeNull();
 
+    // v1.4.13: tightened from +60s → +15s so a tab-closed payer reaches the
+    // first cron-side mempool poll well before the prior 60–120s worst case.
     const nextCheck = new Date(payload.next_check_at as string).getTime();
-    expect(nextCheck).toBeGreaterThanOrEqual(before + 60_000 - 5_000);
-    expect(nextCheck).toBeLessThanOrEqual(after + 60_000 + 5_000);
+    expect(nextCheck).toBeGreaterThanOrEqual(before + 15_000 - 1_000);
+    expect(nextCheck).toBeLessThanOrEqual(after + 15_000 + 1_000);
   });
 });
 

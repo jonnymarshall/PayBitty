@@ -8,6 +8,7 @@ import { computeInvoiceTotals, isValidBtcAddress, LineItem } from "@/lib/invoice
 import { sendInvoicePublishedEmail } from "@/lib/email/send";
 import { logInvoiceEvent } from "@/lib/invoice-events";
 import { decideOverdueFlip } from "@/lib/invoices/overdue-actions";
+import { PRE_MEMPOOL_DELAYS_MS } from "@/lib/invoices/payment-schedule";
 import { addressHasHistory } from "@/lib/mempool";
 
 async function assertAddressFreshness(address: string, contextId?: string): Promise<void> {
@@ -20,6 +21,37 @@ async function assertAddressFreshness(address: string, contextId?: string): Prom
   if (hasHistory === null) {
     const ref = contextId ? ` for invoice ${contextId}` : "";
     console.warn(`[publish] mempool.space unreachable, address history check skipped${ref}`);
+  }
+}
+
+// v1.4.13.6: extracted from loadAndAuthorise so saveDraft and updateDraft can
+// run the same uniqueness check at form-submit time. Previously only publish
+// ran it, so a draft with a duplicate address would save fine and only fail
+// at publish time — confusing fail-late UX.
+async function assertAddressUniqueness(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  address: string,
+  excludeInvoiceId?: string,
+): Promise<void> {
+  let query = supabase
+    .from("invoices")
+    .select("id, invoice_number")
+    .eq("btc_address", address)
+    .neq("status", "draft");
+
+  if (excludeInvoiceId) {
+    query = query.neq("id", excludeInvoiceId);
+  }
+
+  const { data: conflict } = await query.maybeSingle();
+
+  if (conflict) {
+    const ref = conflict.invoice_number
+      ? `invoice ${conflict.invoice_number}`
+      : `invoice …${conflict.id.slice(-8)}`;
+    throw new Error(
+      `btc_address: This bitcoin address has already been used on ${ref}. Please provide a unique address.`,
+    );
   }
 }
 
@@ -48,6 +80,7 @@ export async function saveDraft(payload: InvoicePayload) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (payload.accepts_bitcoin && payload.btc_address) {
+    await assertAddressUniqueness(supabase, payload.btc_address);
     await assertAddressFreshness(payload.btc_address);
   }
 
@@ -102,6 +135,7 @@ export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
   if (existing.status !== "draft") throw new Error("Only draft invoices can be edited");
 
   if (payload.accepts_bitcoin && payload.btc_address) {
+    await assertAddressUniqueness(supabase, payload.btc_address, invoiceId);
     await assertAddressFreshness(payload.btc_address, invoiceId);
   }
 
@@ -181,19 +215,7 @@ async function loadAndAuthorise(invoiceId: string): Promise<{
       throw new Error("btc_address: Invalid BTC address");
     }
 
-    const { data: conflict } = await supabase
-      .from("invoices")
-      .select("id, invoice_number")
-      .eq("btc_address", invoice.btc_address)
-      .neq("status", "draft")
-      .neq("id", invoiceId)
-      .maybeSingle();
-
-    if (conflict) {
-      const ref = conflict.invoice_number ? `invoice ${conflict.invoice_number}` : `invoice …${conflict.id.slice(-8)}`;
-      throw new Error(`btc_address: This bitcoin address has already been used on ${ref}. Please provide a unique address.`);
-    }
-
+    await assertAddressUniqueness(supabase, invoice.btc_address, invoiceId);
     await assertAddressFreshness(invoice.btc_address, invoice.id);
   }
 
@@ -202,7 +224,9 @@ async function loadAndAuthorise(invoiceId: string): Promise<{
 
 const publishStatePatch = () => ({
   status: "pending",
-  next_check_at: new Date(Date.now() + 60_000).toISOString(),
+  // First cron-side mempool poll lands at publish + PRE_MEMPOOL_DELAYS_MS[0]
+  // (single source of truth with the schedule module).
+  next_check_at: new Date(Date.now() + PRE_MEMPOOL_DELAYS_MS[0]).toISOString(),
   stage_attempt: 0,
   mempool_seen_at: null,
 });
