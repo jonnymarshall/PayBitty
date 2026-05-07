@@ -133,11 +133,20 @@ describe("saveDraft", () => {
     warnSpy.mockRestore();
   });
 
-  it("skips the freshness check when accepts_bitcoin is false (no address to check)", async () => {
+  it("skips the freshness check when btc_address is absent (no address to check)", async () => {
     const { insertSingle } = makeSupabase();
-    await saveDraft({ ...VALID_DRAFT, accepts_bitcoin: false });
+    await saveDraft({ ...VALID_DRAFT, btc_address: undefined });
     expect(addressHasHistory).not.toHaveBeenCalled();
     expect(insertSingle).toHaveBeenCalled();
+  });
+
+  it("validates btc_address whenever it is set, regardless of legacy accepts_bitcoin flag (v1.4.14)", async () => {
+    const { insertSingle } = makeSupabase();
+    vi.mocked(addressHasHistory).mockResolvedValueOnce(true);
+    await expect(
+      saveDraft({ ...VALID_DRAFT, accepts_bitcoin: false }),
+    ).rejects.toThrow(/already received transactions/i);
+    expect(insertSingle).not.toHaveBeenCalled();
   });
 
   it("rejects when the BTC address is already used on another non-draft invoice in the user's account (v1.4.13.6)", async () => {

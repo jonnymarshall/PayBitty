@@ -80,7 +80,10 @@ export async function saveDraft(payload: InvoicePayload) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (payload.accepts_bitcoin && payload.btc_address) {
+  // v1.4.14: bitcoin-only — validation is gated on address presence alone.
+  // The legacy accepts_bitcoin flag is ignored on the validation path; the
+  // column itself is dropped in slice 7's migration.
+  if (payload.btc_address) {
     await assertAddressUniqueness(supabase, payload.btc_address);
     await assertAddressFreshness(payload.btc_address);
   }
@@ -108,8 +111,8 @@ export async function saveDraft(payload: InvoicePayload) {
       subtotal_fiat: subtotal,
       total_fiat: total,
       currency: "USD",
-      accepts_bitcoin: payload.accepts_bitcoin,
-      btc_address: payload.accepts_bitcoin ? (payload.btc_address || null) : null,
+      accepts_bitcoin: true,
+      btc_address: payload.btc_address || null,
       due_date: payload.due_date || null,
       access_code: payload.access_code || null,
       status: "draft",
@@ -135,7 +138,7 @@ export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
   if (!existing || existing.user_id !== user!.id) throw new Error("Invoice not found");
   if (existing.status !== "draft") throw new Error("Only draft invoices can be edited");
 
-  if (payload.accepts_bitcoin && payload.btc_address) {
+  if (payload.btc_address) {
     await assertAddressUniqueness(supabase, payload.btc_address, invoiceId);
     await assertAddressFreshness(payload.btc_address, invoiceId);
   }
@@ -161,8 +164,8 @@ export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
       tax_fiat: taxFiat,
       subtotal_fiat: subtotal,
       total_fiat: total,
-      accepts_bitcoin: payload.accepts_bitcoin,
-      btc_address: payload.accepts_bitcoin ? (payload.btc_address || null) : null,
+      accepts_bitcoin: true,
+      btc_address: payload.btc_address || null,
       due_date: payload.due_date || null,
       access_code: payload.access_code || null,
     })
