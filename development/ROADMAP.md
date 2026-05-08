@@ -1081,7 +1081,7 @@ When a payment is detected on the public invoice page (`src/app/invoice/[id]/`),
 
 ---
 
-### ⏳ v1.4.14 — Bitcoin-Only Focus
+### ✅ v1.4.14 — Bitcoin-Only Focus
 
 **Branch:** `v1.4.14/bitcoin-only-focus`
 
@@ -1554,20 +1554,167 @@ After auditing `invoice-actions.tsx` and `page.tsx` on the dashboard detail page
 
 ---
 
-### 🚫 v2.0 — Subscription Billing
+### 🚫 v2.0 — Premium / Paid Accounts (Bitcoin)
 
-**Branch:** `v2.0/billing`
+**Branch:** `v2.0/premium-bitcoin`
 
-- [ ] Lemon Squeezy integration
-- [ ] Free tier enforcement: 5 invoices/month cap
-- [ ] Paid tier: unlimited invoices
-- [ ] BTC one-time payments for 1-month / 6-month / 1-year plans
+**Context:** Monetise SatSend with a premium tier. Users click an "Upgrade" or "Go Premium" affordance, choose a duration (1 month / 6 months / 12 months), and pay in bitcoin. Premium grants access to gated features (initial candidates: full email functionality, public API access). Bitcoin-only at launch — fiat billing rails are explicitly deferred.
+
+**xpub exception.** The standing policy "no xpub on the platform" (see Notes below) carves out one deliberate exception for this branch: the platform holds a *billing* xpub used solely to derive a fresh receive address per upgrade attempt, indexed by user. Reasoning: per-user attribution of inbound subscription payments is non-negotiable; manually provisioning addresses per signup is not viable at any scale. The trade-off — that a leaked billing xpub would expose subscription revenue addresses — is judged acceptable because (a) it controls only inbound subscription flows, not invoice payments, and (b) the alternative (third-party billing) carries its own custody and KYC trade-offs the project wants to avoid for v2.
+
+**Scope**
+
+Tier model
+- [ ] `users.tier text not null default 'free' check (tier in ('free', 'premium'))`.
+- [ ] `users.premium_until timestamptz` — when premium expires.
+- [ ] Cron job downgrades expired users back to `free`.
+- [ ] Decide what happens to premium-only state when a user downgrades (e.g. existing API keys: revoke or grace?).
+
+Upgrade flow
+- [ ] "Upgrade" / "Go Premium" CTA placed in settings + a free-tier-only nav banner.
+- [ ] Tier picker: 1 month / 6 months / 12 months with bitcoin price for each (price in BTC computed at initiation time, locked for a short window — say 15 minutes — to avoid mid-flow drift).
+- [ ] On selection, derive the next address from the billing xpub (per-user index in `users.billing_address_index`), store it on the upgrade attempt, render QR + address + amount.
+- [ ] Background watcher polls the address (re-use the existing `payment-watcher` and `payment-sweep` infrastructure) and flips the user's tier + extends `premium_until` when the payment lands.
+- [ ] Payment-locked-window expiry: if the price window expires before payment, the upgrade attempt is voided and a fresh address + price are issued on retry.
+
+Billing xpub mechanics
+- [ ] `BILLING_XPUB` env var. Documented as the only platform-controlled xpub on the system.
+- [ ] Derivation: BIP84 (`m/84'/0'/0'/0/n`) by default; document the choice in the migration.
+- [ ] Gap-limit handling: skip used indices, never reuse an address even if a previous attempt was abandoned.
+- [ ] `users.billing_address_index integer not null default 0` to track the per-user counter.
+- [ ] Audit log: every derived address with `(user_id, index, address, derived_at, used_for_attempt_id)` so manual reconciliation is possible.
+
+Premium feature gating
+- [ ] Server-side gate helper: `requirePremium(userId)` for premium-only routes / actions.
+- [ ] **Initial premium-gated features (locked in for v2.0 — confirm during a grilling session):**
+  - Sending invoices via email (recipient + owner notifications). Free tier: publish-and-share-link only.
+  - Live payment updates on the public payer page without the payer being logged in (the existing realtime channel — moved behind premium for the *owner's* invoices).
+- [ ] Visual indicator on premium-gated UI surfaces ("Premium feature" badge, with upgrade CTA).
+- [ ] Test that every gated path returns a clear 403/redirect on free-tier requests.
+
+**Decisions to lock in before implementation (grilling session)**
+- Exact pricing for each tier (1m / 6m / 12m).
+- Definitive premium feature list. Email gating for *existing* free users is a behaviour change — confirm acceptance and decide whether existing users at launch get grandfathered.
+- Whether to allow an "extend by N months" flow before current expiry vs. only post-expiry renewal.
+- Refund / dispute policy (likely: none; bitcoin payments are final).
+- Receipt / invoice-for-the-billing-itself behaviour (do users get a receipt for their premium payment?).
+- Behaviour when `BILLING_XPUB` rotates (mid-flight upgrade attempts using the old xpub need a defined fate).
+
+**Out of scope (deferred)**
+- Fiat billing rails (Lemon Squeezy, Stripe, etc.). Bitcoin-only at v2.0; revisit only if real demand surfaces.
+- Per-feature à la carte purchases. One tier with one price ladder.
+- Refunds and chargebacks (out-of-band; see decisions list).
+- Free-tier invoice quotas. Premium is feature-gated, not volume-gated, at v2.0.
+
+**Done when:** A free-tier user can click Upgrade, scan a QR code, pay in bitcoin to a fresh per-user address derived from `BILLING_XPUB`, and have their tier flipped to `premium` automatically when the payment confirms; premium-gated features (email + live updates initially) reject free-tier requests; the cron expiry path downgrades users when `premium_until` lapses; the audit log captures every derived billing address with its user / attempt mapping.
 
 ---
 
-### 🚫 v2.1 — OAuth
+### 🚫 v2.1 — Public API + AI Agent Access (premium-gated)
 
-**Branch:** `v2.1/oauth`
+**Branch:** `v2.1/public-api`
+
+> **Depends on:** v2.0 (premium tier + entitlement system).
+
+**Context:** Let premium users interact with SatSend programmatically. Primary use case: AI agents creating invoices, checking payment status, and sending emails on the user's behalf without a browser session. Secondary use case: third-party integrations (accounting tools, custom dashboards). Gated to premium so the API surface is a value-add of the paid tier rather than a free-tier abuse vector.
+
+**Scope**
+
+Auth + key management
+- [ ] `api_keys` table: `(id, user_id, key_hash, name, last_used_at, created_at, revoked_at)`. Store only the hash; show the raw key once at creation time.
+- [ ] Settings page → API keys section: generate / name / revoke.
+- [ ] Bearer-token auth middleware for `/api/v1/*` routes. Reject if no key, key revoked, hash mismatch, or owning user is not currently premium.
+- [ ] Rate limit per key: starting point 60 req/min, room to tune. Use the existing infra if any, otherwise per-key in-memory or Redis (decide during implementation).
+
+Endpoint surface (v1 — match what the browser UI exposes)
+- [ ] `POST /api/v1/invoices` — create draft.
+- [ ] `GET /api/v1/invoices` — list.
+- [ ] `GET /api/v1/invoices/{id}` — fetch.
+- [ ] `PATCH /api/v1/invoices/{id}` — update draft (only `status='draft'`).
+- [ ] `DELETE /api/v1/invoices/{id}` — delete draft.
+- [ ] `POST /api/v1/invoices/{id}/publish` — publish.
+- [ ] `POST /api/v1/invoices/{id}/send-email` — publish + send.
+- [ ] `GET /api/v1/invoices/{id}/payment-status` — current payment + tx status.
+- [ ] `POST /api/v1/invoices/{id}/duplicate` — duplicate to draft.
+- [ ] `POST /api/v1/invoices/{id}/mark-paid` / `mark-unpaid` / `mark-overdue` — manual state transitions matching the dashboard.
+- [ ] `GET /api/v1/me` — current user info + premium status (so agents can self-check entitlements).
+
+Documentation + DX
+- [ ] OpenAPI spec checked into the repo, served at `/api/v1/openapi.json`.
+- [ ] Quickstart docs page: generate key, curl example, send-an-invoice walkthrough.
+- [ ] AI-agent-friendly docs section: stable JSON shapes, error codes, idempotency guidance.
+
+Security + observability
+- [ ] All API responses tagged with the key id in logs (not the raw key).
+- [ ] Webhook signing if/when webhooks are added (out of scope for v2.1; placeholder).
+- [ ] Audit log per key: every request line with timestamp, route, status, latency.
+- [ ] Tests: revoked-key path returns 401; expired-premium path returns 403; rate-limit path returns 429.
+
+**Decisions to lock in (grilling session)**
+- Versioning policy: `/api/v1/*` permanent, breaking changes only via `/api/v2/*`?
+- Webhook support — in v2.1 or later? (Real-time payment notifications via webhook is the natural agent integration.)
+- Read-only vs read-write keys, or single permission level?
+- Per-key vs per-user rate limits.
+
+**Out of scope (deferred)**
+- Third-party OAuth applications (programmatic access on behalf of *other* users). Single-user keys only at v2.1.
+- Webhooks (deferred follow-on; would land as v2.X once the API surface is stable).
+- GraphQL. REST + JSON only.
+- SDKs. Curl + the OpenAPI spec is enough at v2.1; community / first-party SDKs can follow.
+
+**Done when:** A premium user can generate an API key from settings, use it to perform the full invoice lifecycle (create / publish / send / check-status / mark-state) via curl, hit a documented rate limit, and revoke the key cleanly; an AI agent given a key can drive the same flows; non-premium users receive 403 on every API route; the OpenAPI spec is the source of truth and is served from the deployment.
+
+---
+
+### 🚫 v2.2 — Referral Codes
+
+**Branch:** `v2.2/referral-codes`
+
+> **Depends on:** v2.0 (premium tier — the payout target is premium signups).
+
+**Context:** Every account gets a referral code at signup. New users can sign up with someone's code. Referrers earn a cut of premium signups they bring in. Mechanism designed to grow word-of-mouth without paid ads.
+
+**Scope (sketch — needs a grilling session before implementation)**
+
+Code lifecycle
+- [ ] Auto-generated referral code per user at signup. Short, memorable, URL-safe (e.g. 8 chars). Stored on `users.referral_code unique`.
+- [ ] Visible in settings; user can copy / share.
+- [ ] Sign-up flow accepts an optional code (form field + `?ref=CODE` URL parameter).
+- [ ] On successful signup with a valid code, set `users.referred_by_user_id` on the new user (immutable post-signup).
+
+Payout mechanics
+- [ ] On a premium upgrade by a referred user, calculate the referrer's cut.
+- [ ] Decide payout mechanism: bitcoin payout to a referrer-supplied address vs. credit toward the referrer's own premium subscription. Each has UX + accounting implications.
+- [ ] Track payout state per referral event: `pending` → `paid` (with txid if BTC) / `credited` (if applied to subscription).
+
+UX
+- [ ] Settings page section showing: your code, total referrals, total earnings (in $ or BTC), pending payouts.
+- [ ] Optional landing-page support for `?ref=CODE` so the code persists through signup-via-marketing-link.
+
+**Decisions to lock in (grilling session — explicit per the user's request)**
+
+The user has flagged this entry as needing a thorough grilling before any code is written. Open questions:
+- **Payout percentage.** A flat percent of the premium payment (e.g. 10%, 20%, 30%)? Higher for the first signup, decaying after?
+- **Time bound.** One-shot (only the first premium payment by the referee), bounded (12 months of the referee's premium), or lifetime?
+- **Currency.** Pay out in BTC to a referrer-supplied address, or credit toward the referrer's own premium time? The latter is operationally simpler (no fresh BTC sends per payout) but only useful to active premium users.
+- **Self-referral / collusion.** Block obvious self-referrals? Detection is hard; anti-fraud is a rabbit hole.
+- **Stacking.** What if a referee uses multiple codes (e.g. code A at signup, then code B applied later)? Likely first-code-wins, but lock it in.
+- **Referrer downgrades.** If a referrer lapses to free, do their pending payouts continue to accrue?
+- **Disclosure.** Referral programs typically need terms-of-service language; out of scope for the engineering branch but flag for the user.
+
+**Out of scope (deferred)**
+- Multi-tier (referrer of a referrer) attribution. Single-hop only.
+- Custom-vanity codes (paid feature for marketing partners). Auto-generated only.
+- Affiliate-style dashboards with conversion analytics. Settings-page summary only at v2.2.
+- Coupon-style codes that grant a discount to the referee. Referee gets the standard signup; only the referrer earns.
+
+**Done when:** Every account has a referral code; a new user signing up via `?ref=CODE` or the form field has the relationship recorded; a premium upgrade by a referred user produces a payout event whose mechanics are exactly as decided in the grilling session above; the referrer can see their referrals and payout state from settings.
+
+---
+
+### 🚫 v2.3 — OAuth
+
+**Branch:** `v2.3/oauth`
 
 - [ ] Google OAuth
 - [ ] GitHub OAuth
@@ -1575,18 +1722,18 @@ After auditing `invoice-actions.tsx` and `page.tsx` on the dashboard detail page
 
 ---
 
-### 🚫 v2.2 — Custom Subdomains + Branding
+### 🚫 v2.4 — Custom Subdomains + Branding
 
-**Branch:** `v2.2/custom-subdomains`
+**Branch:** `v2.4/custom-subdomains`
 
-- [ ] Wildcard subdomain routing (`yourcompany.paybitty.io`)
+- [ ] Wildcard subdomain routing (`yourcompany.satsend.io`)
 - [ ] Logo/branding upload (paid tier only)
 
 ---
 
-### 🚫 v2.3 — Address Book + Reusable Items
+### 🚫 v2.5 — Address Book + Reusable Items
 
-**Branch:** `v2.3/address-book`
+**Branch:** `v2.5/address-book`
 
 > **Depends on:** v1.7 (address format standardisation) — saved addresses use the structured multi-field format.
 
@@ -1605,9 +1752,9 @@ After auditing `invoice-actions.tsx` and `page.tsx` on the dashboard detail page
 
 ---
 
-### 🚫 v2.4 — Multi-Currency Support
+### 🚫 v2.6 — Multi-Currency Support
 
-**Branch:** `v2.4/multi-currency`
+**Branch:** `v2.6/multi-currency`
 
 - [ ] Currency selector on invoice creation (USD, EUR, GBP, AUD, CAD, etc.)
 - [ ] BTC price fetched in the selected fiat currency
@@ -1618,7 +1765,7 @@ After auditing `invoice-actions.tsx` and `page.tsx` on the dashboard detail page
 ## Notes
 
 - Billing (v2.0+) is fully deferred until v1 is stable and in use.
-- xpub / HD wallet support is permanently rejected — security risk if the key leaks.
+- **xpub / HD wallet policy.** The platform never accepts an xpub from a *user* for invoice payment addresses — the security trade-off (key leak exposes every derived address) is the wrong one for that surface. **Single deliberate exception:** v2.0 premium-account billing uses a platform-controlled `BILLING_XPUB` to derive a per-user upgrade address. Reasoning: per-user attribution of subscription revenue is non-negotiable, manual address provisioning per signup is not viable, and a leaked billing xpub exposes inbound subscription flows only — a manageable blast radius for the value of automating the billing path.
 - Light mode and colour scheme overhaul are tracked in v1.5.
 
 ---
