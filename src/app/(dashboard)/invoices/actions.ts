@@ -92,7 +92,7 @@ function assertInvoiceNumberLength(invoiceNumber: string | null | undefined): vo
 // v1.4.16: appends "... (copy)" and trims the source from the end only when
 // needed to fit the 30-char cap. Returns null when source is null/empty so
 // duplicates of unnumbered invoices stay unnumbered.
-export function buildDuplicateInvoiceNumber(source: string | null | undefined): string | null {
+function buildDuplicateInvoiceNumber(source: string | null | undefined): string | null {
   if (!source) return null;
   const room = INVOICE_NUMBER_MAX_LENGTH - DUPLICATE_SUFFIX.length;
   const base = source.length > room ? source.slice(0, room) : source;
