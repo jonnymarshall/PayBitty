@@ -35,7 +35,7 @@ const baseInvoice: Invoice = {
   updated_at: "2026-04-15T10:00:00Z",
 };
 
-async function textFromPdf(invoice: Invoice, appUrl = "https://paybitty.test"): Promise<string> {
+async function textFromPdf(invoice: Invoice, appUrl = "https://satsend.test"): Promise<string> {
   const buf = await renderInvoicePdf(invoice, { appUrl });
   const parser = new PDFParse({ data: new Uint8Array(buf) });
   const result = await parser.getText();
@@ -97,9 +97,9 @@ describe("renderInvoicePdf", () => {
   });
 
   it("includes the public invoice URL built from the supplied appUrl, labelled 'View and pay online'", async () => {
-    const text = await textFromPdf(baseInvoice, "https://paybitty.app");
+    const text = await textFromPdf(baseInvoice, "https://satsend.app");
     expect(text).toContain("View and pay online");
-    expect(text).toContain("https://paybitty.app/invoice/inv-id-1");
+    expect(text).toContain("https://satsend.app/invoice/inv-id-1");
   });
 
   it("explains that the QR code does not encode an amount and points the payer to the public link", async () => {

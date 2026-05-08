@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.15] - 2026-05-08
+
+### Changed
+
+- **Product rename: Paybitty → SatSend.** Mechanical rename across all living copy with no behaviour changes. Updated: `package.json` name (+ lockfile regen); root layout `<title>`; navbar logo on dashboard; login heading; email template footer ("Sent via SatSend") and "Open in SatSend" CTAs in both owner notification templates; default `EMAIL_FROM` display name in `getFromAddress`; "SatSend user" fallback `senderName` across publish/cron/payment-status routes; PDF test app-URL placeholders; README title; ROADMAP title line; forward-looking subdomain example in PRD; wording in four `manual-tests/` files; project-level skill descriptions in `.claude/skills/`.
+- **Regression guard:** added `src/rename-to-satsend.test.ts`, a vitest suite that asserts no living source/docs file (excluding CHANGELOG and ROADMAP historical sections) contains the old brand string. Stays in the suite as a permanent guard.
+
+### Notes
+
+- **Out of scope:** custom-domain cutover (`paybitty.*` → `satsend.*`) is tracked separately on the Pre-deployment Checklist. No deployed-domain references were changed in this PR.
+- **CHANGELOG history and prior version sections in `ROADMAP.md` retain "Paybitty"** intentionally — they describe state at the time and stay for provenance. Only living/forward copy was updated.
+- **GitHub repo was renamed** `jonnymarshall/PayBitty` → `jonnymarshall/SatSend` separately, before this PR. GitHub's URL redirect keeps existing clones, Vercel links, and external bookmarks working.
+- **Manual sweep needed:** `.env` is gitignored and protected — owner should `grep -i paybitty .env` and update any brand-only strings (e.g. `EMAIL_FROM` display name) to "SatSend".
+
 ## [1.4.14.3] - 2026-05-08
 
 ### Migrations

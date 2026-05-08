@@ -1,6 +1,6 @@
 ---
 name: next-feature
-description: Start the next queued feature in the Paybitty roadmap. Use when user says "next feature", "move on", "what's next", or "continue". Reads development/ROADMAP.md, finds the first ⏳ section, and immediately begins TDD implementation.
+description: Start the next queued feature in the SatSend roadmap. Use when user says "next feature", "move on", "what's next", or "continue". Reads development/ROADMAP.md, finds the first ⏳ section, and immediately begins TDD implementation.
 ---
 
 Read `development/ROADMAP.md`. Find the first section marked ⏳ (queued). That is the current target.

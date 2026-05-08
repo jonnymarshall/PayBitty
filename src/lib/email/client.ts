@@ -11,7 +11,7 @@ export function getResend(): Resend | null {
 }
 
 export function getFromAddress(): string {
-  return process.env.EMAIL_FROM || "Paybitty <onboarding@resend.dev>";
+  return process.env.EMAIL_FROM || "SatSend <onboarding@resend.dev>";
 }
 
 export function getAppUrl(): string {

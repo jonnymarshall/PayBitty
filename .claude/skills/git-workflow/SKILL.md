@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: Git workflow and SemVer management for Paybitty. Use when starting any new feature, fix, or release — creates the correct branch, enforces SemVer, and keeps CHANGELOG.md in sync. Always invoked before writing code on a new task.
+description: Git workflow and SemVer management for SatSend. Use when starting any new feature, fix, or release — creates the correct branch, enforces SemVer, and keeps CHANGELOG.md in sync. Always invoked before writing code on a new task.
 ---
 
 # Git Workflow & Semantic Versioning

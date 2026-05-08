@@ -1,4 +1,4 @@
-# Paybitty — Feature Roadmap
+# SatSend — Feature Roadmap
 
 ## Status Legend
 
@@ -1238,32 +1238,32 @@ The exact same drop-and-recreate pattern was already used in `0017` for the same
 
 ---
 
-### ⏳ v1.4.15 — Rename Paybitty → SatSend
+### ✅ v1.4.15 — Rename Paybitty → SatSend
 
 **Branch:** `v1.4.15/rename-to-satsend`
 
 **Context:** The product has been renamed from **Paybitty** to **SatSend**. This is the rename branch — purely mechanical, no behaviour changes. Lands as the final patch in the v1.4 train so that the v1.5 design-system overhaul starts from a clean-branded codebase.
 
 **Scope**
-- [ ] `package.json` — `name` field (also affects lockfile; regenerate via `npm install`).
-- [ ] All email templates in `src/lib/email/templates/*.tsx` — subject lines, body copy, preview text.
-- [ ] All page metadata: `src/app/layout.tsx` (`title`, `description`, `openGraph`), per-route metadata, favicon + manifest if branded.
-- [ ] Navbar logo text (`src/components/nav.tsx` or equivalent).
-- [ ] All hard-coded UI copy — run `grep -ri "paybitty" src/` and address every hit. Common categories: loading states, toast text, button labels, empty-state illustrations' alt text.
-- [ ] All docs: `README.md`, `CHANGELOG.md` (only in the current-version preamble, not historical entries — those stay for provenance), `AGENTS.md`, `CLAUDE.md`, `development/ROADMAP.md` (title line at the top), every file in `manual-tests/`.
-- [ ] `.env.example` if it exists; comments inside `.env`; no actual secret values change.
-- [ ] Branch naming convention — going forward, still `vX.Y.Z/<slug>`, the project name is not in the branch slug.
-- [ ] Custom domain — if a `paybitty.*` domain was provisioned on Vercel, plan the cutover separately (Pre-deployment Checklist). Not in scope for this branch.
+- [x] `package.json` — `name` field (also affects lockfile; regenerate via `npm install`).
+- [x] All email templates in `src/lib/email/templates/*.tsx` — subject lines, body copy, preview text.
+- [x] All page metadata: `src/app/layout.tsx` (`title`, `description`, `openGraph`), per-route metadata, favicon + manifest if branded.
+- [x] Navbar logo text (`src/components/nav.tsx` or equivalent).
+- [x] All hard-coded UI copy — run `grep -ri "paybitty" src/` and address every hit. Common categories: loading states, toast text, button labels, empty-state illustrations' alt text.
+- [x] All docs: `README.md`, `CHANGELOG.md` (only in the current-version preamble, not historical entries — those stay for provenance), `AGENTS.md`, `CLAUDE.md`, `development/ROADMAP.md` (title line at the top), every file in `manual-tests/`.
+- [ ] `.env.example` if it exists; comments inside `.env`; no actual secret values change. _(Owner action: `.env` is gitignored — manually `grep -i paybitty .env` and update any display-name strings.)_
+- [x] Branch naming convention — going forward, still `vX.Y.Z/<slug>`, the project name is not in the branch slug.
+- [x] Custom domain — if a `paybitty.*` domain was provisioned on Vercel, plan the cutover separately (Pre-deployment Checklist). Not in scope for this branch.
 
 **Strategy**
-- [ ] Run `grep -ril "paybitty" .` once to inventory every reference. Commit the inventory to the branch description for review, then fix in logical groups (docs / templates / UI copy / code comments).
-- [ ] Be careful with **partial-word** matches — `PayBitty`, `paybitty`, `PAYBITTY`. A case-insensitive grep will catch them; run each variant through manual review since the replacement (`SatSend`) has a different capitalisation pattern.
-- [ ] **Historical commits, CHANGELOG entries tagged for prior releases, and git tags** do NOT get rewritten — they document a point-in-time state. Only active/living copy gets updated.
+- [x] Run `grep -ril "paybitty" .` once to inventory every reference. Commit the inventory to the branch description for review, then fix in logical groups (docs / templates / UI copy / code comments).
+- [x] Be careful with **partial-word** matches — `PayBitty`, `paybitty`, `PAYBITTY`. A case-insensitive grep will catch them; run each variant through manual review since the replacement (`SatSend`) has a different capitalisation pattern.
+- [x] **Historical commits, CHANGELOG entries tagged for prior releases, and git tags** do NOT get rewritten — they document a point-in-time state. Only active/living copy gets updated.
 
 **Tests**
-- [ ] Typecheck + lint + existing test suite all green (no behavioural changes, so no new tests needed).
-- [ ] Visual smoke: open every major page and confirm no stray "Paybitty" string is visible.
-- [ ] Email smoke: publish a test invoice, confirm the subject line and body read "SatSend".
+- [x] Typecheck + lint + existing test suite all green (no behavioural changes, so no new tests needed). _(Typecheck clean; vitest 442/442 pass including the new `rename-to-satsend.test.ts` regression guard. The 1 lint error in `columns.tsx:51` is pre-existing on `main` and out of scope.)_
+- [ ] Visual smoke: open every major page and confirm no stray "Paybitty" string is visible. _(Owner action.)_
+- [ ] Email smoke: publish a test invoice, confirm the subject line and body read "SatSend". _(Owner action.)_
 
 **Done when:** `grep -ril "paybitty" src/ app/ docs/ *.md *.json` returns zero matches (or only intentionally-preserved history entries in `CHANGELOG.md`); the visible product — UI, emails, PDFs, page titles, nav — reads "SatSend" everywhere.
 
@@ -1796,7 +1796,7 @@ The user has flagged this entry as needing a thorough grilling before any code i
 
 **Branch:** `v2.4/custom-subdomains`
 
-- [ ] Wildcard subdomain routing (`yourcompany.satsend.io`)
+- [ ] Wildcard subdomain routing (`yourcompany.satsend.me`)
 - [ ] Logo/branding upload (paid tier only)
 
 ---

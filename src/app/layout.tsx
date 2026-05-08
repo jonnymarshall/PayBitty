@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Paybitty",
+  title: "SatSend",
   description: "Bitcoin-enabled invoicing for freelancers and small businesses.",
 };
 

@@ -1,4 +1,4 @@
-# Paybitty
+# SatSend
 
 Bitcoin-enabled invoicing for freelancers and small businesses.
 

@@ -5,7 +5,7 @@ const mockResendSend = vi.fn();
 const mockGetResend = vi.fn();
 vi.mock("./client", () => ({
   getResend: () => mockGetResend(),
-  getFromAddress: () => "Paybitty <test@example.com>",
+  getFromAddress: () => "SatSend <test@example.com>",
   getAppUrl: () => "https://app.test",
 }));
 

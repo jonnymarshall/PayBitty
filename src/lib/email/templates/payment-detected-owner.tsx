@@ -32,7 +32,7 @@ export function PaymentDetectedOwnerEmail({
           <Text style={{ fontSize: "12px", color: "#666", wordBreak: "break-all" }}>Txid: {txid}</Text>
           <Hr />
           <Section>
-            <Link href={dashboardUrl}>Open in Paybitty</Link>
+            <Link href={dashboardUrl}>Open in SatSend</Link>
           </Section>
         </Container>
       </Body>
