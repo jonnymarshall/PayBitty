@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.16] - 2026-05-08
+
+### Added
+
+- **Invoice number length cap (30 chars).** Enforced at three layers: DB CHECK constraint (`0020_invoice_number_length.sql`), server actions (`saveDraft`, `updateDraft`), and the form input (`<Input maxLength={30}>` with a live `N / 30` counter under the field). Closes the long-standing UX gap where unbounded invoice numbers blew out table column widths, wrapped awkwardly on the public payer page, and produced ugly `invoice_published` email subjects.
+
+### Changed
+
+- **`duplicateInvoice` suffix is now constraint-safe.** When the source `invoice_number` is short enough that `<source>... (copy)` fits within 30 chars, the duplicate's number is `<source>... (copy)`. When it would exceed 30, the source is trimmed from the end so the total is exactly 30, e.g. `LONG-SOURCE-NAM... (copy)`. Prevents the new CHECK constraint from firing mid-action when a user duplicates an invoice with a long-but-legal number.
+- Form-level invoice-number soft check in `invoice-form.tsx` lowered from 50 to 30 chars (defensive — the new `maxLength` attribute prevents reaching the soft check via normal input).
+
+### Migrations
+
+- `0020_invoice_number_length.sql` — deletes any existing invoice rows where `char_length(invoice_number) > 30` (no production rows expected; pre-existing test data is the only realistic source), then adds `constraint invoice_number_length check (char_length(invoice_number) <= 30)` on `invoices.invoice_number`. Verified against remote with `npx supabase db push` BEFORE this PR was opened.
+
 ## [1.4.15] - 2026-05-08
 
 ### Changed

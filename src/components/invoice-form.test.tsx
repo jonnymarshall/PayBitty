@@ -53,6 +53,32 @@ describe("InvoiceForm your_email field", () => {
   });
 });
 
+describe("InvoiceForm invoice_number (v1.4.16 — 30-char cap)", () => {
+  it("renders the invoice-number input with maxLength=30", () => {
+    render(<InvoiceForm />);
+    const input = document.getElementById("input-invoice-number") as HTMLInputElement;
+    expect(input.maxLength).toBe(30);
+  });
+
+  it("blocks typing past 30 characters via the maxLength attribute", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+    const input = document.getElementById("input-invoice-number") as HTMLInputElement;
+    await user.type(input, "X".repeat(40));
+    expect(input.value).toHaveLength(30);
+  });
+
+  it("renders a live N / 30 counter that updates as the user types", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceForm />);
+    const counter = document.getElementById("counter-invoice-number")!;
+    expect(counter.textContent).toBe("0 / 30");
+    const input = document.getElementById("input-invoice-number") as HTMLInputElement;
+    await user.type(input, "INV-001");
+    expect(counter.textContent).toBe("7 / 30");
+  });
+});
+
 describe("InvoiceForm access code", () => {
   it("lowercases access codes as the user types", async () => {
     const user = userEvent.setup();

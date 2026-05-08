@@ -1269,22 +1269,24 @@ The exact same drop-and-recreate pattern was already used in `0017` for the same
 
 ---
 
-### ⏳ v1.4.16 — Invoice Number Character Limit
+### ✅ v1.4.16 — Invoice Number Character Limit
 
 **Branch:** `v1.4.16/invoice-number-char-limit`
 
 **Context:** The invoice number field on the form (`/invoices/new` and `/invoices/[id]/edit`) is currently unbounded. Long values blow out table column widths on `/invoices`, wrap awkwardly on the public invoice page, and produce ugly subject lines in `invoice_published` emails ("Invoice ABCDEFGHIJKLMNOPQRSTUVWXYZ-2026-04-29-FOLLOWUP-V2 from …"). Cap at **30 characters** across the whole pipeline.
 
 **Scope**
-- [ ] DB-level constraint — migration `00XX_invoice_number_length.sql` adding a `CHECK (char_length(invoice_number) <= 30)` constraint to `invoices.invoice_number`. Audit existing rows first; if any are over 30 chars (`select id, invoice_number from invoices where char_length(invoice_number) > 30`), decide whether to truncate or reject the migration — most likely truncate with a `update` statement in the migration body, since the existing UI never enforced a limit and any over-length values are user-generated. Document the truncation policy in the migration comment.
-- [ ] Form-level enforcement — `<Input maxLength={30}>` on the invoice-number field in `InvoiceForm` (`src/components/invoice-form.tsx` or wherever the field lives), plus a Zod / runtime check in the server actions (`createInvoice`, `updateInvoice`) returning a structured error if exceeded.
-- [ ] Helper text — the form should show a small character counter or hint ("Max 30 characters") so the limit is discoverable, not a surprise.
-- [ ] Audit display sites — confirm the table column, public invoice page, PDF, and all three email templates render cleanly with a 30-char value (no overflow, no clipping).
+- [x] DB-level constraint — migration `0020_invoice_number_length.sql` adds `constraint invoice_number_length check (invoice_number is null or char_length(invoice_number) <= 30)`. Reconciliation policy: **delete** (not truncate) any pre-existing rows over 30 chars — locked during planning since over-length values are realistically only abandoned test data. Self-healing pattern matches `0018`. Verified against remote with `npx supabase db push` BEFORE PR (zero offenders deleted on apply).
+- [x] Form-level enforcement — `maxLength={30}` on `<input id="input-invoice-number">` in `src/components/invoice-form.tsx`, plus `assertInvoiceNumberLength` server-side guard called from both `saveDraft` and `updateDraft` in `src/app/(dashboard)/invoices/actions.ts`. Existing soft-validation also lowered from 50 to 30 chars (defensive). Server action throws `Error("invoice_number: ...")` to match the existing field-prefix convention.
+- [x] Helper text — live `N / 30` counter rendered under the field in `tabular-nums` muted-foreground style. Updates as the user types.
+- [x] Audit display sites — see manual-tests doc `manual-tests/v1.4.16-invoice-number-char-limit.md`. Dashboard cell and public-page heading have no truncation classes; risk is layout pressure, not clipping. Documented as visual checks rather than automated tests.
+- [x] **Added during planning:** `duplicateInvoice` was a missed scope item — its old `${source} (copy)` suffix would push duplicates of long-but-legal invoice numbers over 30 chars and trigger the new CHECK. Replaced with `buildDuplicateInvoiceNumber()` which always appends `... (copy)` and trims source from the end only when needed. Result is always ≤ 30 chars when source is ≤ 30.
 
 **Tests**
-- [ ] Unit/integration test on the server action: passing a 31-char invoice number returns a validation error, 30-char passes.
-- [ ] Form test: typing past 30 characters is blocked by `maxLength`.
-- [ ] DB-level test (or manual): inserting a 31-char value via SQL is rejected by the CHECK constraint.
+- [x] Unit/integration test on the server action: passing a 31-char invoice number returns a validation error, 30-char passes, undefined passes (optional). Covers both `saveDraft` and `updateDraft`.
+- [x] Form test: typing past 30 characters is blocked by `maxLength`; live counter renders `N / 30` and updates as the user types.
+- [x] DB-level test (or manual): inserting a 31-char value via SQL is rejected by the CHECK constraint. (DB-level enforcement covered in manual-tests doc TEST 4 — no automated test for the migration constraint itself.)
+- [x] **Added:** `duplicateInvoice` suffix tests — short source no trim, 20-char boundary no trim, 21-char source trims by 1, 30-char source trims to 20.
 
 **Done when:** No code path — UI form, server action, or direct DB insert — accepts an invoice number longer than 30 characters.
 
