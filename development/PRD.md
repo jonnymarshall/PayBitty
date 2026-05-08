@@ -105,7 +105,7 @@ A good test verifies externally observable behavior, not implementation details.
 
 - Paid tier / subscription billing (Lemon Squeezy, BTC one-time payments)
 - OAuth (Google, GitHub, LinkedIn)
-- Custom subdomains (yourcompany.satsend.io)
+- Custom subdomains (yourcompany.satsend.me)
 - Branding/logo upload
 - xpub / HD wallet support
 - Saved contacts / address book

@@ -1796,7 +1796,7 @@ The user has flagged this entry as needing a thorough grilling before any code i
 
 **Branch:** `v2.4/custom-subdomains`
 
-- [ ] Wildcard subdomain routing (`yourcompany.satsend.io`)
+- [ ] Wildcard subdomain routing (`yourcompany.satsend.me`)
 - [ ] Logo/branding upload (paid tier only)
 
 ---
