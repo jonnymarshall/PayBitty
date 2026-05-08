@@ -1168,6 +1168,30 @@ Backfill: audit existing rows for any `status != 'draft' and btc_address is null
 
 ---
 
+### 🔄 v1.4.14.1 — Reconcile pre-v1.4.12 invoices for migration 0018
+
+**Branch:** `v1.4.14.1/reconcile-pre-v1-4-12-invoices`
+
+**Context:** When `0018_bitcoin_only.sql` was pushed to remote after the v1.4.14 merge, its defensive audit aborted with: *"24 invoice(s) have status != draft and btc_address is null."* These rows predate v1.4.12 (which added the publish-time `btc_address` requirement at the action layer); before that gate landed, the form allowed publishing without one.
+
+Inspection of all 24 confirmed they are abandoned test data: trivial totals (mostly $0 or $0.50), empty client_name, invoice_numbers like `TESTY` / `DRAFTY` / `FailedEmail` / `this one is paid`. No real client data, no real bitcoin payments to preserve.
+
+**Scope**
+
+- [ ] New migration `0019_reconcile_pre_v1_4_12_invoices.sql`. One statement: `delete from invoices where status != 'draft' and btc_address is null`. Cascading FKs on `email_events` and `invoice_events` clean up related rows automatically.
+- [ ] After 0019 lands on remote, re-run `npx supabase db push` to apply 0018 (now with zero offenders, the audit passes and the constraint + column drop succeed).
+- [ ] Update `CHANGELOG.md` with a v1.4.14.1 entry capturing the reconciliation.
+
+**Why a separate branch + entry:** The user's working convention is that every change — including hotfixes and post-merge reconciliation patches — lives on its own branch with its own roadmap entry. Direct commits to `main` are not allowed.
+
+**Out of scope**
+- Any code changes. This branch is migration-only.
+- Backfilling addresses for the deleted rows. They were junk; the simpler reconciliation is to delete.
+
+**Done when:** `0019` is merged on main, `0018` applies cleanly on remote (zero offenders), and the v1.4.14 constraint + column-drop is fully landed.
+
+---
+
 ### ⏳ v1.4.15 — Rename Paybitty → SatSend
 
 **Branch:** `v1.4.15/rename-to-satsend`
