@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.14.1] - 2026-05-08
+
+### Migrations
+
+- `0019_reconcile_pre_v1_4_12_invoices.sql` — deletes 24 abandoned test invoices that predate v1.4.12's publish-time `btc_address` requirement. They had `status != 'draft'` but `btc_address IS NULL`, which v1.4.14's `0018` migration's defensive audit refused to allow through. Inspected before deletion: all 24 had trivial totals, empty client_name, and test-style invoice_numbers (`TESTY`, `DRAFTY`, `FailedEmail`, etc.). Cascading deletes clean up related `email_events` and `invoice_events` rows automatically.
+
+### Notes
+
+- Hotfix-only: no code changes. After this lands, `npx supabase db push` re-runs 0018 cleanly (zero offenders) and the v1.4.14 constraint + column drop fully land.
+
 ## [1.4.14] - 2026-05-08
 
 ### Changed
