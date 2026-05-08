@@ -41,7 +41,7 @@ export function InvoicePublishedEmail({
             </>
           ) : null}
           <Hr />
-          <Text style={{ fontSize: "12px", color: "#666" }}>Sent via Paybitty</Text>
+          <Text style={{ fontSize: "12px", color: "#666" }}>Sent via SatSend</Text>
         </Container>
       </Body>
     </Html>

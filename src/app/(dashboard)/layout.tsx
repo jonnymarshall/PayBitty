@@ -16,7 +16,7 @@ export default async function DashboardLayout({
       return (
         <div className="min-h-screen flex flex-col">
           <header id="nav--header" className="border-b border-border px-6 py-4 flex items-center justify-between">
-            <Link href="/invoices" className="font-semibold tracking-tight text-primary">Paybitty</Link>
+            <Link href="/invoices" className="font-semibold tracking-tight text-primary">SatSend</Link>
             <span id="nav--user-email" className="text-sm text-muted-foreground">dev@playwright.test</span>
           </header>
           <main id="dashboard--main" className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
@@ -35,7 +35,7 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen flex flex-col">
       <header id="nav--header" className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <Link href="/invoices" className="font-semibold tracking-tight text-primary">Paybitty</Link>
+        <Link href="/invoices" className="font-semibold tracking-tight text-primary">SatSend</Link>
         <div id="nav--right" className="flex items-center gap-4">
           <span id="nav--user-email" className="text-sm text-muted-foreground">{user.email}</span>
           <form action={signOutAction}>

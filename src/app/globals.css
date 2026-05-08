@@ -84,7 +84,7 @@
   --chart-5: oklch(0.269 0 0);
 }
 
-/* Dark — Paybitty brand: #0A0A0A bg, #181818 surface, #DE3C4B accent, #7C7F65 muted */
+/* Dark — SatSend brand: #0A0A0A bg, #181818 surface, #DE3C4B accent, #7C7F65 muted */
 .dark {
   --background: oklch(0.06 0 0);
   --foreground: oklch(1 0 0);

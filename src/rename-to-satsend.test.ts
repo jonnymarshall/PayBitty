@@ -5,11 +5,15 @@ import path from "node:path";
 
 const ROOT = path.resolve(__dirname, "..");
 
+// Construct the forbidden token at runtime so this file is not its own match.
+const FORBIDDEN = ["pay", "bitty"].join("");
+const FORBIDDEN_RE = new RegExp(FORBIDDEN, "i");
+
 function grepCount(targets: string[]): { count: number; files: string[] } {
   const existing = targets.filter((t) => existsSync(path.join(ROOT, t)));
   if (existing.length === 0) return { count: 0, files: [] };
   try {
-    const out = execSync(`grep -RIil "paybitty" ${existing.join(" ")}`, {
+    const out = execSync(`grep -RIil "${FORBIDDEN}" ${existing.join(" ")}`, {
       cwd: ROOT,
       encoding: "utf8",
     });
@@ -22,18 +26,18 @@ function grepCount(targets: string[]): { count: number; files: string[] } {
   }
 }
 
-describe("v1.4.15 rename guard — living copy reads SatSend, not Paybitty", () => {
-  it("src/ contains zero 'paybitty' references", () => {
+describe(`v1.4.15 rename guard — living copy reads SatSend, not the old name`, () => {
+  it(`src/ contains zero forbidden references`, () => {
     const { files } = grepCount(["src"]);
     expect(files).toEqual([]);
   });
 
-  it("manual-tests/ contains zero 'paybitty' references", () => {
+  it(`manual-tests/ contains zero forbidden references`, () => {
     const { files } = grepCount(["manual-tests"]);
     expect(files).toEqual([]);
   });
 
-  it("top-level docs and config contain zero 'paybitty' references", () => {
+  it(`top-level docs and config contain zero forbidden references`, () => {
     const { files } = grepCount([
       "README.md",
       "AGENTS.md",
@@ -44,11 +48,11 @@ describe("v1.4.15 rename guard — living copy reads SatSend, not Paybitty", () 
     expect(files).toEqual([]);
   });
 
-  it("ROADMAP.md title line reads SatSend", () => {
+  it(`ROADMAP.md title line reads SatSend`, () => {
     const head = execSync("head -1 development/ROADMAP.md", {
       cwd: ROOT,
       encoding: "utf8",
     });
-    expect(head).not.toMatch(/paybitty/i);
+    expect(head).not.toMatch(FORBIDDEN_RE);
   });
 });

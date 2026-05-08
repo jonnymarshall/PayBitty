@@ -1,4 +1,4 @@
-# Paybitty — Feature Roadmap
+# SatSend — Feature Roadmap
 
 ## Status Legend
 

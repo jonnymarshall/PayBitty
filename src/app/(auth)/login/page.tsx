@@ -38,7 +38,7 @@ export default function LoginPage() {
     <main id="login--main" className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1">
-          <h1 id="login--heading" className="text-2xl font-semibold">Sign in to Paybitty</h1>
+          <h1 id="login--heading" className="text-2xl font-semibold">Sign in to SatSend</h1>
           <p className="text-muted-foreground text-sm">
             Enter your email and we&apos;ll send you a magic link.
           </p>

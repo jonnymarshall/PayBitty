@@ -118,7 +118,7 @@ export async function POST(
         userId: invoice.user_id,
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoice_number,
-        senderName: invoice.your_name || invoice.your_company || invoice.your_email || "Paybitty user",
+        senderName: invoice.your_name || invoice.your_company || invoice.your_email || "SatSend user",
         clientName: invoice.client_name || "your client",
         totalFiat: invoice.total_fiat,
         currency: invoice.currency,

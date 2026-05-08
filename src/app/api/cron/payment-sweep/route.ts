@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
             userId: inv.user_id,
             invoiceId: inv.id,
             invoiceNumber: inv.invoice_number,
-            senderName: inv.your_name || inv.your_company || inv.your_email || "Paybitty user",
+            senderName: inv.your_name || inv.your_company || inv.your_email || "SatSend user",
             clientName: inv.client_name || "your client",
             totalFiat: inv.total_fiat,
             currency: inv.currency,
