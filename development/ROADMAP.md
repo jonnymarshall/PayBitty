@@ -1571,6 +1571,36 @@ After auditing `invoice-actions.tsx` and `page.tsx` on the dashboard detail page
 
 ---
 
+### ⏳ v1.4.24 — `/invoices` Row Actions: Disable Unavailable Actions with Hover Explanation
+
+**Branch:** `v1.4.24/row-actions-disabled-with-tooltip`
+
+**Context (bug):** From `/invoices`, the row-action menu lets the owner trigger publish, publish-and-send-email, publish-and-mark-sent, etc. on any invoice — including drafts that don't satisfy the action's preconditions (e.g. a draft with no `btc_address`, which v1.4.14 made mandatory at publish time). When that happens, the action **fails silently from the list** — the server action throws, the dropdown closes, and the user sees nothing happen. Same scenario on the edit page (`/invoices/[id]/edit`) is handled correctly: the publish button surfaces a field-level error and scrolls the field into view via the `parseServerError` plumbing.
+
+The list already has one example of the right pattern: **"Send via email"** is greyed out when `client_email` is missing. We need to extend that pattern to cover every precondition, and add a hover tooltip so the user knows *why* an action is disabled. Reuse the **exact wording** shown on the edit page so the user sees consistent language across surfaces.
+
+**Scope**
+- [ ] Audit every row action exposed from `/invoices` and identify each precondition. Starter list:
+  - Publish (any variant) → requires `btc_address` (drafts only).
+  - Publish-and-send-email → also requires `client_email`.
+  - Mark-paid → requires status ∈ {pending, overdue, underpaid (post-v1.4.19)}.
+  - Mark-unpaid → requires status='paid'.
+  - Delete-draft → requires status='draft'.
+  - (Confirm: archive, duplicate, mark-overdue — likely no preconditions but worth a sweep.)
+- [ ] Centralise availability into a single helper, `getRowActionAvailability(invoice): Record<ActionName, { ok: true } | { ok: false, reason: string }>`. The closest existing pattern is `canPublishInvoice` in `src/lib/invoices/can-publish.ts` — extend that or factor a new sibling, and **make `canPublishInvoice` consume the same source of truth** so the edit-page error wording and the list-tooltip wording are guaranteed to stay in sync.
+- [ ] In the row-action menu (likely a `RowActions` component referenced from `src/app/(dashboard)/invoices/columns.tsx`), pipe the per-action `reason` into the menu item: `disabled={!availability.ok}` plus a `<Tooltip>` (shadcn/ui Tooltip if installed; else inline `title=`) showing `availability.reason`.
+- [ ] Unify the existing "Send via email when no `client_email`" disable path through the same helper — don't keep two implementations.
+
+**Tests**
+- [ ] Unit on `getRowActionAvailability`: for each action × each missing-precondition, returns `{ ok: false, reason: "<edit-page wording>" }`. Asserts wording matches the constants/messages used by `canPublishInvoice` so a future copy change in one place updates both.
+- [ ] Component on the row-action menu: a draft with no `btc_address` renders **Publish** disabled with a tooltip whose text matches the edit-page error wording.
+- [ ] Component: a paid invoice renders **Mark as Paid** disabled, **Mark as Unpaid** enabled.
+- [ ] Component: a draft with no `client_email` renders **Send via email** disabled (regression guard for the existing behaviour, now routed through the new helper).
+
+**Done when:** No action in the `/invoices` row menu can be executed against an invoice that doesn't satisfy its preconditions; disabled actions surface a hover tooltip explaining the missing prerequisite, with wording consistent with the edit page; the "send via email when no client_email" behaviour is unified through the same helper rather than living as a one-off.
+
+---
+
 ### ⏳ v1.5 — Design System Overhaul
 
 **Branch:** `v1.5/design-system`
