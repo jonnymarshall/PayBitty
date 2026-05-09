@@ -1601,6 +1601,94 @@ The list already has one example of the right pattern: **"Send via email"** is g
 
 ---
 
+### ⏳ v1.4.25 — Duplicate Invoice: No Phantom Draft, No `NEXT_REDIRECT` Dialog
+
+**Branch:** `v1.4.25/duplicate-invoice-cleanup`
+
+**Context (two coupled bugs from `/invoices` duplicate action):**
+
+1. **Phantom drafts.** `duplicateInvoice` (`src/app/(dashboard)/invoices/actions.ts:406`) writes a draft row to the DB before redirecting to `/invoices/<new-id>/edit`. If the user clicks Cancel without saving, the row stays — leaving litter on the dashboard list. Expected: the source's data should be passed to `/invoices/new` and only persist when the user clicks Save / Publish / etc.
+2. **`NEXT_REDIRECT` error dialog flashes** during the duplicate action even though the redirect itself works. This is the standard Next.js Server-Action `redirect()` semantics — the throw is meant to be caught silently by the framework, but something in the row-action handler or a global error boundary is surfacing it. Likely auto-fixes when item 1 lands, since the new flow uses a client-side `router.push` rather than a server-side `redirect()`.
+
+**Scope**
+- [ ] Refactor: `duplicateInvoice` no longer INSERTs. Recommended shape — `/invoices/new?from=<source-id>` query param. The new-invoice page server-loads the source (with auth check), passes its sanitised fields as `initialValues` to the existing `<InvoiceForm>`, no server action involved. Sanitisation matches the old action: `btc_address=null`, `btc_txid=null`, `status='draft'`, `invoice_number` via `buildDuplicateInvoiceNumber()` (already constraint-safe per v1.4.16).
+- [ ] Row-action handler in `/invoices` swaps `duplicateInvoice(id)` for a client-side `router.push('/invoices/new?from=<id>')`.
+- [ ] Verify the `NEXT_REDIRECT` dialog is gone. If anything else still surfaces it (e.g. a global toast), filter via `isRedirectError(e)` from `next/navigation`.
+
+**Tests**
+- [ ] Clicking duplicate from `/invoices` writes ZERO rows to the `invoices` table. Navigating to `/invoices/new?from=<id>`, populating the form, then closing the tab leaves the DB unchanged.
+- [ ] `/invoices/new?from=<id>` renders a pre-filled `<InvoiceForm>` (minus `btc_address` and `btc_txid`).
+- [ ] Manual: no `NEXT_REDIRECT` error dialog or console noise during the duplicate flow.
+
+**Done when:** duplicating an invoice and then clicking Cancel leaves zero rows in the database; the `NEXT_REDIRECT` UI artifact is gone.
+
+---
+
+### ⏳ v1.4.26 — Client `invoice_published` Email: Subject + Body Rework
+
+**Branch:** `v1.4.26/client-email-rework`
+
+**Context:** the recipient-facing `invoice_published` email (`src/lib/email/templates/`) has three friction points:
+
+1. **Subject** reads as transactional metadata (`Invoice INV-001 from <sender>`). The recipient may not realise it's a payment ask at all.
+2. **Body opens by restating the subject** before the greeting. Redundant.
+3. **No in-email guidance on how Bitcoin payment works.** The recipient gets a CTA to view the invoice but no explanation of what to expect when they click through.
+
+**Scope**
+- [ ] **Subject** → `You've received an invoice from <sender>`, where `<sender>` follows the existing fallback chain `your_name || your_company || your_email` (same chain `publishAndSendEmail` already uses for `senderName`).
+- [ ] **Body opening** → drop the "Invoice X from Y" line. Open with `Hi there,` (or `Hi <client_name>,` when `client_name` is set — confirm the current template's recipient-name awareness from v1.4.4).
+- [ ] **Payment instructions paragraph** → add a short section explaining how Bitcoin payment works on SatSend: "Click through to view the invoice. SatSend accepts Bitcoin only — you'll see the BTC address, a QR code, and a live BTC/fiat conversion. Pay from any wallet; we'll detect the payment automatically." Tone matches the existing template.
+- [ ] Update template tests/snapshots in `src/lib/email/templates/`.
+
+**Out of scope**
+- Subject variants per state (overdue, etc.) — separate work.
+- Localisation — single-language for now.
+
+**Tests**
+- [ ] Subject snapshot: reads `You've received an invoice from <sender>`, with each of the three fallback-chain branches exercised.
+- [ ] Body snapshot: starts with `Hi there,` or `Hi <client_name>,`; does not contain the substring `Invoice <number> from`; contains a Bitcoin-payment-instructions paragraph.
+
+**Done when:** the published-invoice email subject leads with the recipient's framing; the body greets cleanly without metadata duplication; payment instructions are visible without clicking through.
+
+---
+
+### ⏳ v1.4.27 — Owner Notification: Email Sender on Publish
+
+**Branch:** `v1.4.27/sender-publish-notification`
+
+**Context:** today only the recipient gets an email when an invoice is published. The owner has no inbox confirmation, no nudge on next steps (share the link, track activity), no post-publish receipt. Adds a new email type sent to the owner whenever any of `publishInvoice`, `publishAndSendEmail`, or `publishAndMarkSent` succeeds.
+
+**Schema**
+- [ ] Migration: extend the `email_type` enum with a new value (working name `invoice_publish_confirmation`; bikeshed in PR).
+
+**Template**
+- [ ] New template `src/lib/email/templates/invoice-publish-confirmation.tsx`. Subject: `Your invoice has been published`. Body shape:
+  - `Hi <your_name || "there">,`
+  - `Your invoice <invoice_number> to <client_name> has been successfully published on SatSend.` Drop the "to <client_name>" clause when `client_name` is missing; substitute or drop the `<invoice_number>` clause when missing.
+  - **Sharing section.** The public invoice URL (`<app-url>/invoice/<id>`), plus the access code on a separate line when `access_code` is set ("If your client asks for an access code: `<code>`").
+  - **Tracking section.** Link back to the dashboard invoice page with a one-line cue: "Track payment status, email delivery, and other activity at: `<dashboard-url>`."
+  - Standard footer (matches existing templates).
+
+**Wiring**
+- [ ] `sendInvoicePublishConfirmationEmail` in `src/lib/email/send.ts`, mirrors `sendInvoicePublishedEmail`'s shape (idempotency, `email_events` row, error handling, `senderName` fallback chain).
+- [ ] Call from all three publish entry points in `src/app/(dashboard)/invoices/actions.ts`. Recipient: `your_email`. If missing, skip silently and log; **never block the publish**.
+- [ ] Activity feed: confirm whether a new event type is needed or whether the existing `email_events` row surfaces transitively. Decide in PR.
+
+**Out of scope**
+- Owner notifications for payment events, overdue flips, etc. — separate work.
+- A user-facing "don't email me publish confirmations" preference — premature; revisit if anyone complains.
+
+**Tests**
+- [ ] `sendInvoicePublishConfirmationEmail` writes an `email_events` row with the new `email_type`, calls Resend with the right subject + body, returns the same shape as `sendInvoicePublishedEmail`.
+- [ ] Template snapshots: all-fields-populated; no `client_name`; no `access_code`; no `your_name`; no `invoice_number`.
+- [ ] Each of the three publish actions triggers the confirmation email.
+- [ ] Missing `your_email` skips the send without throwing or aborting the publish.
+- [ ] `publishAndSendEmail` triggers BOTH the client `invoice_published` email AND the owner's confirmation email; both rows appear in `email_events`.
+
+**Done when:** every publish path sends the owner a confirmation email containing the invoice number, client (when set), public-share link, access code (when set), and a tracking link back to the dashboard. Sending failure never blocks the publish itself.
+
+---
+
 ### ⏳ v1.5 — Design System Overhaul
 
 **Branch:** `v1.5/design-system`
