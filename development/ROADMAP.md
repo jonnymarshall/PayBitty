@@ -1269,22 +1269,24 @@ The exact same drop-and-recreate pattern was already used in `0017` for the same
 
 ---
 
-### ⏳ v1.4.16 — Invoice Number Character Limit
+### ✅ v1.4.16 — Invoice Number Character Limit
 
 **Branch:** `v1.4.16/invoice-number-char-limit`
 
 **Context:** The invoice number field on the form (`/invoices/new` and `/invoices/[id]/edit`) is currently unbounded. Long values blow out table column widths on `/invoices`, wrap awkwardly on the public invoice page, and produce ugly subject lines in `invoice_published` emails ("Invoice ABCDEFGHIJKLMNOPQRSTUVWXYZ-2026-04-29-FOLLOWUP-V2 from …"). Cap at **30 characters** across the whole pipeline.
 
 **Scope**
-- [ ] DB-level constraint — migration `00XX_invoice_number_length.sql` adding a `CHECK (char_length(invoice_number) <= 30)` constraint to `invoices.invoice_number`. Audit existing rows first; if any are over 30 chars (`select id, invoice_number from invoices where char_length(invoice_number) > 30`), decide whether to truncate or reject the migration — most likely truncate with a `update` statement in the migration body, since the existing UI never enforced a limit and any over-length values are user-generated. Document the truncation policy in the migration comment.
-- [ ] Form-level enforcement — `<Input maxLength={30}>` on the invoice-number field in `InvoiceForm` (`src/components/invoice-form.tsx` or wherever the field lives), plus a Zod / runtime check in the server actions (`createInvoice`, `updateInvoice`) returning a structured error if exceeded.
-- [ ] Helper text — the form should show a small character counter or hint ("Max 30 characters") so the limit is discoverable, not a surprise.
-- [ ] Audit display sites — confirm the table column, public invoice page, PDF, and all three email templates render cleanly with a 30-char value (no overflow, no clipping).
+- [x] DB-level constraint — migration `0020_invoice_number_length.sql` adds `constraint invoice_number_length check (invoice_number is null or char_length(invoice_number) <= 30)`. Reconciliation policy: **delete** (not truncate) any pre-existing rows over 30 chars — locked during planning since over-length values are realistically only abandoned test data. Self-healing pattern matches `0018`. Verified against remote with `npx supabase db push` BEFORE PR (zero offenders deleted on apply).
+- [x] Form-level enforcement — `maxLength={30}` on `<input id="input-invoice-number">` in `src/components/invoice-form.tsx`, plus `assertInvoiceNumberLength` server-side guard called from both `saveDraft` and `updateDraft` in `src/app/(dashboard)/invoices/actions.ts`. Existing soft-validation also lowered from 50 to 30 chars (defensive). Server action throws `Error("invoice_number: ...")` to match the existing field-prefix convention.
+- [x] Helper text — live `N / 30` counter rendered under the field in `tabular-nums` muted-foreground style. Updates as the user types.
+- [x] Audit display sites — see manual-tests doc `manual-tests/v1.4.16-invoice-number-char-limit.md`. Dashboard cell and public-page heading have no truncation classes; risk is layout pressure, not clipping. Documented as visual checks rather than automated tests.
+- [x] **Added during planning:** `duplicateInvoice` was a missed scope item — its old `${source} (copy)` suffix would push duplicates of long-but-legal invoice numbers over 30 chars and trigger the new CHECK. Replaced with `buildDuplicateInvoiceNumber()` which always appends `... (copy)` and trims source from the end only when needed. Result is always ≤ 30 chars when source is ≤ 30.
 
 **Tests**
-- [ ] Unit/integration test on the server action: passing a 31-char invoice number returns a validation error, 30-char passes.
-- [ ] Form test: typing past 30 characters is blocked by `maxLength`.
-- [ ] DB-level test (or manual): inserting a 31-char value via SQL is rejected by the CHECK constraint.
+- [x] Unit/integration test on the server action: passing a 31-char invoice number returns a validation error, 30-char passes, undefined passes (optional). Covers both `saveDraft` and `updateDraft`.
+- [x] Form test: typing past 30 characters is blocked by `maxLength`; live counter renders `N / 30` and updates as the user types.
+- [x] DB-level test (or manual): inserting a 31-char value via SQL is rejected by the CHECK constraint. (DB-level enforcement covered in manual-tests doc TEST 4 — no automated test for the migration constraint itself.)
+- [x] **Added:** `duplicateInvoice` suffix tests — short source no trim, 20-char boundary no trim, 21-char source trims by 1, 30-char source trims to 20.
 
 **Done when:** No code path — UI form, server action, or direct DB insert — accepts an invoice number longer than 30 characters.
 
@@ -1566,6 +1568,124 @@ After auditing `invoice-actions.tsx` and `page.tsx` on the dashboard detail page
 - Custom illustrations or paid imagery — use simple typography and subtle background treatments. Polish can land in v1.5 with the design-system overhaul.
 
 **Done when:** The unauthenticated root URL renders a purposeful landing page that pitches the product as bitcoin-only invoicing; all metadata, OpenGraph, and README copy reflect the same positioning; authenticated users skip the page; no copy anywhere in the codebase contradicts the bitcoin-only positioning.
+
+---
+
+### ⏳ v1.4.24 — `/invoices` Row Actions: Disable Unavailable Actions with Hover Explanation
+
+**Branch:** `v1.4.24/row-actions-disabled-with-tooltip`
+
+**Context (bug):** From `/invoices`, the row-action menu lets the owner trigger publish, publish-and-send-email, publish-and-mark-sent, etc. on any invoice — including drafts that don't satisfy the action's preconditions (e.g. a draft with no `btc_address`, which v1.4.14 made mandatory at publish time). When that happens, the action **fails silently from the list** — the server action throws, the dropdown closes, and the user sees nothing happen. Same scenario on the edit page (`/invoices/[id]/edit`) is handled correctly: the publish button surfaces a field-level error and scrolls the field into view via the `parseServerError` plumbing.
+
+The list already has one example of the right pattern: **"Send via email"** is greyed out when `client_email` is missing. We need to extend that pattern to cover every precondition, and add a hover tooltip so the user knows *why* an action is disabled. Reuse the **exact wording** shown on the edit page so the user sees consistent language across surfaces.
+
+**Scope**
+- [ ] Audit every row action exposed from `/invoices` and identify each precondition. Starter list:
+  - Publish (any variant) → requires `btc_address` (drafts only).
+  - Publish-and-send-email → also requires `client_email`.
+  - Mark-paid → requires status ∈ {pending, overdue, underpaid (post-v1.4.19)}.
+  - Mark-unpaid → requires status='paid'.
+  - Delete-draft → requires status='draft'.
+  - (Confirm: archive, duplicate, mark-overdue — likely no preconditions but worth a sweep.)
+- [ ] Centralise availability into a single helper, `getRowActionAvailability(invoice): Record<ActionName, { ok: true } | { ok: false, reason: string }>`. The closest existing pattern is `canPublishInvoice` in `src/lib/invoices/can-publish.ts` — extend that or factor a new sibling, and **make `canPublishInvoice` consume the same source of truth** so the edit-page error wording and the list-tooltip wording are guaranteed to stay in sync.
+- [ ] In the row-action menu (likely a `RowActions` component referenced from `src/app/(dashboard)/invoices/columns.tsx`), pipe the per-action `reason` into the menu item: `disabled={!availability.ok}` plus a `<Tooltip>` (shadcn/ui Tooltip if installed; else inline `title=`) showing `availability.reason`.
+- [ ] Unify the existing "Send via email when no `client_email`" disable path through the same helper — don't keep two implementations.
+
+**Tests**
+- [ ] Unit on `getRowActionAvailability`: for each action × each missing-precondition, returns `{ ok: false, reason: "<edit-page wording>" }`. Asserts wording matches the constants/messages used by `canPublishInvoice` so a future copy change in one place updates both.
+- [ ] Component on the row-action menu: a draft with no `btc_address` renders **Publish** disabled with a tooltip whose text matches the edit-page error wording.
+- [ ] Component: a paid invoice renders **Mark as Paid** disabled, **Mark as Unpaid** enabled.
+- [ ] Component: a draft with no `client_email` renders **Send via email** disabled (regression guard for the existing behaviour, now routed through the new helper).
+
+**Done when:** No action in the `/invoices` row menu can be executed against an invoice that doesn't satisfy its preconditions; disabled actions surface a hover tooltip explaining the missing prerequisite, with wording consistent with the edit page; the "send via email when no client_email" behaviour is unified through the same helper rather than living as a one-off.
+
+---
+
+### ⏳ v1.4.25 — Duplicate Invoice: No Phantom Draft, No `NEXT_REDIRECT` Dialog
+
+**Branch:** `v1.4.25/duplicate-invoice-cleanup`
+
+**Context (two coupled bugs from `/invoices` duplicate action):**
+
+1. **Phantom drafts.** `duplicateInvoice` (`src/app/(dashboard)/invoices/actions.ts:406`) writes a draft row to the DB before redirecting to `/invoices/<new-id>/edit`. If the user clicks Cancel without saving, the row stays — leaving litter on the dashboard list. Expected: the source's data should be passed to `/invoices/new` and only persist when the user clicks Save / Publish / etc.
+2. **`NEXT_REDIRECT` error dialog flashes** during the duplicate action even though the redirect itself works. This is the standard Next.js Server-Action `redirect()` semantics — the throw is meant to be caught silently by the framework, but something in the row-action handler or a global error boundary is surfacing it. Likely auto-fixes when item 1 lands, since the new flow uses a client-side `router.push` rather than a server-side `redirect()`.
+
+**Scope**
+- [ ] Refactor: `duplicateInvoice` no longer INSERTs. Recommended shape — `/invoices/new?from=<source-id>` query param. The new-invoice page server-loads the source (with auth check), passes its sanitised fields as `initialValues` to the existing `<InvoiceForm>`, no server action involved. Sanitisation matches the old action: `btc_address=null`, `btc_txid=null`, `status='draft'`, `invoice_number` via `buildDuplicateInvoiceNumber()` (already constraint-safe per v1.4.16).
+- [ ] Row-action handler in `/invoices` swaps `duplicateInvoice(id)` for a client-side `router.push('/invoices/new?from=<id>')`.
+- [ ] Verify the `NEXT_REDIRECT` dialog is gone. If anything else still surfaces it (e.g. a global toast), filter via `isRedirectError(e)` from `next/navigation`.
+
+**Tests**
+- [ ] Clicking duplicate from `/invoices` writes ZERO rows to the `invoices` table. Navigating to `/invoices/new?from=<id>`, populating the form, then closing the tab leaves the DB unchanged.
+- [ ] `/invoices/new?from=<id>` renders a pre-filled `<InvoiceForm>` (minus `btc_address` and `btc_txid`).
+- [ ] Manual: no `NEXT_REDIRECT` error dialog or console noise during the duplicate flow.
+
+**Done when:** duplicating an invoice and then clicking Cancel leaves zero rows in the database; the `NEXT_REDIRECT` UI artifact is gone.
+
+---
+
+### ⏳ v1.4.26 — Client `invoice_published` Email: Subject + Body Rework
+
+**Branch:** `v1.4.26/client-email-rework`
+
+**Context:** the recipient-facing `invoice_published` email (`src/lib/email/templates/`) has three friction points:
+
+1. **Subject** reads as transactional metadata (`Invoice INV-001 from <sender>`). The recipient may not realise it's a payment ask at all.
+2. **Body opens by restating the subject** before the greeting. Redundant.
+3. **No in-email guidance on how Bitcoin payment works.** The recipient gets a CTA to view the invoice but no explanation of what to expect when they click through.
+
+**Scope**
+- [ ] **Subject** → `You've received an invoice from <sender>`, where `<sender>` follows the existing fallback chain `your_name || your_company || your_email` (same chain `publishAndSendEmail` already uses for `senderName`).
+- [ ] **Body opening** → drop the "Invoice X from Y" line. Open with `Hi there,` (or `Hi <client_name>,` when `client_name` is set — confirm the current template's recipient-name awareness from v1.4.4).
+- [ ] **Payment instructions paragraph** → add a short section explaining how Bitcoin payment works on SatSend: "Click through to view the invoice. SatSend accepts Bitcoin only — you'll see the BTC address, a QR code, and a live BTC/fiat conversion. Pay from any wallet; we'll detect the payment automatically." Tone matches the existing template.
+- [ ] Update template tests/snapshots in `src/lib/email/templates/`.
+
+**Out of scope**
+- Subject variants per state (overdue, etc.) — separate work.
+- Localisation — single-language for now.
+
+**Tests**
+- [ ] Subject snapshot: reads `You've received an invoice from <sender>`, with each of the three fallback-chain branches exercised.
+- [ ] Body snapshot: starts with `Hi there,` or `Hi <client_name>,`; does not contain the substring `Invoice <number> from`; contains a Bitcoin-payment-instructions paragraph.
+
+**Done when:** the published-invoice email subject leads with the recipient's framing; the body greets cleanly without metadata duplication; payment instructions are visible without clicking through.
+
+---
+
+### ⏳ v1.4.27 — Owner Notification: Email Sender on Publish
+
+**Branch:** `v1.4.27/sender-publish-notification`
+
+**Context:** today only the recipient gets an email when an invoice is published. The owner has no inbox confirmation, no nudge on next steps (share the link, track activity), no post-publish receipt. Adds a new email type sent to the owner whenever any of `publishInvoice`, `publishAndSendEmail`, or `publishAndMarkSent` succeeds.
+
+**Schema**
+- [ ] Migration: extend the `email_type` enum with a new value (working name `invoice_publish_confirmation`; bikeshed in PR).
+
+**Template**
+- [ ] New template `src/lib/email/templates/invoice-publish-confirmation.tsx`. Subject: `Your invoice has been published`. Body shape:
+  - `Hi <your_name || "there">,`
+  - `Your invoice <invoice_number> to <client_name> has been successfully published on SatSend.` Drop the "to <client_name>" clause when `client_name` is missing; substitute or drop the `<invoice_number>` clause when missing.
+  - **Sharing section.** The public invoice URL (`<app-url>/invoice/<id>`), plus the access code on a separate line when `access_code` is set ("If your client asks for an access code: `<code>`").
+  - **Tracking section.** Link back to the dashboard invoice page with a one-line cue: "Track payment status, email delivery, and other activity at: `<dashboard-url>`."
+  - Standard footer (matches existing templates).
+
+**Wiring**
+- [ ] `sendInvoicePublishConfirmationEmail` in `src/lib/email/send.ts`, mirrors `sendInvoicePublishedEmail`'s shape (idempotency, `email_events` row, error handling, `senderName` fallback chain).
+- [ ] Call from all three publish entry points in `src/app/(dashboard)/invoices/actions.ts`. Recipient: `your_email`. If missing, skip silently and log; **never block the publish**.
+- [ ] Activity feed: confirm whether a new event type is needed or whether the existing `email_events` row surfaces transitively. Decide in PR.
+
+**Out of scope**
+- Owner notifications for payment events, overdue flips, etc. — separate work.
+- A user-facing "don't email me publish confirmations" preference — premature; revisit if anyone complains.
+
+**Tests**
+- [ ] `sendInvoicePublishConfirmationEmail` writes an `email_events` row with the new `email_type`, calls Resend with the right subject + body, returns the same shape as `sendInvoicePublishedEmail`.
+- [ ] Template snapshots: all-fields-populated; no `client_name`; no `access_code`; no `your_name`; no `invoice_number`.
+- [ ] Each of the three publish actions triggers the confirmation email.
+- [ ] Missing `your_email` skips the send without throwing or aborting the publish.
+- [ ] `publishAndSendEmail` triggers BOTH the client `invoice_published` email AND the owner's confirmation email; both rows appear in `email_events`.
+
+**Done when:** every publish path sends the owner a confirmation email containing the invoice number, client (when set), public-share link, access code (when set), and a tracking link back to the dashboard. Sending failure never blocks the publish itself.
 
 ---
 

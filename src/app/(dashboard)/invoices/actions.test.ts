@@ -148,6 +148,29 @@ describe("saveDraft", () => {
     );
     expect(insertSingle).not.toHaveBeenCalled();
   });
+
+  // v1.4.16: invoice_number is capped at 30 chars at three layers (DB CHECK,
+  // server actions, form maxLength). The server-action guard is the safety net
+  // for any path that bypasses the form (devtools paste, programmatic call).
+  it("rejects when invoice_number is longer than 30 characters (v1.4.16)", async () => {
+    const { insertSingle } = makeSupabase();
+    await expect(
+      saveDraft({ ...VALID_DRAFT, invoice_number: "X".repeat(31) }),
+    ).rejects.toThrow(/invoice_number.*30/i);
+    expect(insertSingle).not.toHaveBeenCalled();
+  });
+
+  it("accepts invoice_number of exactly 30 characters (v1.4.16 boundary)", async () => {
+    const { insertSingle } = makeSupabase();
+    await saveDraft({ ...VALID_DRAFT, invoice_number: "X".repeat(30) });
+    expect(insertSingle).toHaveBeenCalled();
+  });
+
+  it("accepts a missing invoice_number — field stays optional (v1.4.16)", async () => {
+    const { insertSingle } = makeSupabase();
+    await saveDraft({ ...VALID_DRAFT, invoice_number: undefined });
+    expect(insertSingle).toHaveBeenCalled();
+  });
 });
 
 describe("updateDraft", () => {
@@ -175,6 +198,14 @@ describe("updateDraft", () => {
     ).rejects.toThrow(
       /btc_address: This bitcoin address has already been used on invoice INV-042/i,
     );
+  });
+
+  it("rejects when invoice_number is longer than 30 characters (v1.4.16)", async () => {
+    makeSupabase({ fetchData: draftFixture });
+    const { updateDraft } = await import("./actions");
+    await expect(
+      updateDraft("inv-1", { ...VALID_DRAFT, invoice_number: "X".repeat(31) }),
+    ).rejects.toThrow(/invoice_number.*30/i);
   });
 });
 
@@ -590,13 +621,16 @@ describe("duplicateInvoice", () => {
     expect(insertSingle).toHaveBeenCalled();
   });
 
-  it('appends " (copy)" to invoice_number when source has one', async () => {
+  // v1.4.16: suffix is "... (copy)" (10 chars). The "..." is a visual signal
+  // that the duplicate's number is derived from a source. Source is trimmed
+  // from the end only when the result would exceed the 30-char DB cap.
+  it('appends "... (copy)" to a short invoice_number without trimming (v1.4.16)', async () => {
     const { insertChain } = makeSupabase({
       fetchData: { ...SOURCE_INVOICE, invoice_number: "INV-001" },
       insertData: { id: "inv-new" },
     });
     await duplicateInvoice("inv-src");
-    expect(insertChain.mock.calls[0][0].invoice_number).toBe("INV-001 (copy)");
+    expect(insertChain.mock.calls[0][0].invoice_number).toBe("INV-001... (copy)");
   });
 
   it("leaves invoice_number null when source has no number", async () => {
@@ -606,6 +640,42 @@ describe("duplicateInvoice", () => {
     });
     await duplicateInvoice("inv-src");
     expect(insertChain.mock.calls[0][0].invoice_number).toBeNull();
+  });
+
+  it("does not trim when source is exactly 20 chars — full source + suffix totals 30 (v1.4.16 boundary)", async () => {
+    const source20 = "A".repeat(20);
+    const { insertChain } = makeSupabase({
+      fetchData: { ...SOURCE_INVOICE, invoice_number: source20 },
+      insertData: { id: "inv-new" },
+    });
+    await duplicateInvoice("inv-src");
+    const result = insertChain.mock.calls[0][0].invoice_number;
+    expect(result).toBe(`${source20}... (copy)`);
+    expect(result.length).toBe(30);
+  });
+
+  it("trims source from the end when source is 21 chars — result still totals 30 (v1.4.16)", async () => {
+    const source21 = "A".repeat(21);
+    const { insertChain } = makeSupabase({
+      fetchData: { ...SOURCE_INVOICE, invoice_number: source21 },
+      insertData: { id: "inv-new" },
+    });
+    await duplicateInvoice("inv-src");
+    const result = insertChain.mock.calls[0][0].invoice_number;
+    expect(result).toBe(`${"A".repeat(20)}... (copy)`);
+    expect(result.length).toBe(30);
+  });
+
+  it("trims a 30-char source down to 20 chars + suffix (v1.4.16 worst case)", async () => {
+    const source30 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ-123";
+    const { insertChain } = makeSupabase({
+      fetchData: { ...SOURCE_INVOICE, invoice_number: source30 },
+      insertData: { id: "inv-new" },
+    });
+    await duplicateInvoice("inv-src");
+    const result = insertChain.mock.calls[0][0].invoice_number;
+    expect(result).toBe("ABCDEFGHIJKLMNOPQRST... (copy)");
+    expect(result.length).toBe(30);
   });
 
   it("redirects to /invoices/[new-id]/edit after creating the draft", async () => {

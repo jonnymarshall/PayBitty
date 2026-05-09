@@ -75,9 +75,35 @@ export interface InvoicePayload {
   access_code?: string;
 }
 
+// v1.4.16: cap matches the DB CHECK constraint added in 0020 and the
+// `<Input maxLength={30}>` on the form. Server-side guard catches any path
+// that bypasses the form (devtools paste, programmatic call, future API).
+const INVOICE_NUMBER_MAX_LENGTH = 30;
+const DUPLICATE_SUFFIX = "... (copy)";
+
+function assertInvoiceNumberLength(invoiceNumber: string | null | undefined): void {
+  if (invoiceNumber && invoiceNumber.length > INVOICE_NUMBER_MAX_LENGTH) {
+    throw new Error(
+      `invoice_number: Invoice number must be ${INVOICE_NUMBER_MAX_LENGTH} characters or fewer.`,
+    );
+  }
+}
+
+// v1.4.16: appends "... (copy)" and trims the source from the end only when
+// needed to fit the 30-char cap. Returns null when source is null/empty so
+// duplicates of unnumbered invoices stay unnumbered.
+function buildDuplicateInvoiceNumber(source: string | null | undefined): string | null {
+  if (!source) return null;
+  const room = INVOICE_NUMBER_MAX_LENGTH - DUPLICATE_SUFFIX.length;
+  const base = source.length > room ? source.slice(0, room) : source;
+  return `${base}${DUPLICATE_SUFFIX}`;
+}
+
 export async function saveDraft(payload: InvoicePayload) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  assertInvoiceNumberLength(payload.invoice_number);
 
   // v1.4.14: bitcoin-only — validation is gated on address presence alone.
   if (payload.btc_address) {
@@ -124,6 +150,8 @@ export async function saveDraft(payload: InvoicePayload) {
 export async function updateDraft(invoiceId: string, payload: InvoicePayload) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  assertInvoiceNumberLength(payload.invoice_number);
 
   const { data: existing } = await supabase
     .from("invoices")
@@ -419,7 +447,7 @@ export async function duplicateInvoice(invoiceId: string) {
     .from("invoices")
     .insert({
       user_id: source.user_id,
-      invoice_number: source.invoice_number ? `${source.invoice_number} (copy)` : null,
+      invoice_number: buildDuplicateInvoiceNumber(source.invoice_number),
       your_name: source.your_name,
       your_email: source.your_email ?? "",
       your_company: source.your_company,

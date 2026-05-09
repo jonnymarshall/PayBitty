@@ -186,7 +186,7 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
     const errs: Record<string, string> = {};
     if (form.client_email && !isValidEmail(form.client_email)) errs.client_email = "Must be a valid email";
     if (form.your_email && !isValidEmail(form.your_email)) errs.your_email = "Must be a valid email";
-    if (form.invoice_number && form.invoice_number.length > 50) errs.invoice_number = "Max 50 characters";
+    if (form.invoice_number && form.invoice_number.length > 30) errs.invoice_number = "Max 30 characters";
     const btc = form.btc_address.trim();
     if (btc && !isValidBtcAddress(btc)) errs.btc_address = "Invalid BTC address";
     if (isPublish && !btc) errs.btc_address = "BTC address is required to publish";
@@ -308,15 +308,23 @@ export function InvoiceForm({ invoiceId, initialValues, sessionEmail }: InvoiceF
       {/* Invoice number */}
       <section id="section-invoice-number">
         <Field label="Invoice number" error={errors.invoice_number}>
-          <input
-            id="input-invoice-number"
-            type="text"
-            maxLength={50}
-            value={form.invoice_number}
-            onChange={(e) => set("invoice_number", e.target.value)}
-            className={`${inputCls} max-w-xs`}
-            placeholder="e.g. INV-001"
-          />
+          <div className="max-w-xs">
+            <input
+              id="input-invoice-number"
+              type="text"
+              maxLength={30}
+              value={form.invoice_number}
+              onChange={(e) => set("invoice_number", e.target.value)}
+              className={inputCls}
+              placeholder="e.g. INV-001"
+            />
+            <p
+              id="counter-invoice-number"
+              className="mt-1 text-xs text-muted-foreground tabular-nums"
+            >
+              {form.invoice_number.length} / 30
+            </p>
+          </div>
         </Field>
       </section>
 
