@@ -516,4 +516,26 @@ describe("InvoiceDataTable — pagination URL state", () => {
     expect(screen.getByText("PG-11")).toBeInTheDocument();
     expect(screen.queryByText("PG-01")).not.toBeInTheDocument();
   });
+
+  it("does not loop router.replace calls (regression: clamp + URL sync feedback loop)", async () => {
+    // When ?page=99 triggers a clamp, the URL sync effect fires once to write the corrected
+    // ?page=2. It must not fire a second time. Past bug: searchParams in deps caused a feedback
+    // loop where every router.replace triggered another effect run.
+    mockSearchParams = new URLSearchParams("page=99");
+    render(<InvoiceDataTable data={PAGINATED} userId="u1" />);
+    // Give effects a beat to settle.
+    await new Promise((r) => setTimeout(r, 50));
+    // Clamp: router.replace called exactly once with the corrected URL.
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith("/invoices?page=2", { scroll: false });
+  });
+
+  it("does not write to URL on initial mount when state already matches the URL", async () => {
+    // Mounting with ?page=2 and parsing pageIndex=1 should be a no-op for URL writes —
+    // the state already matches the URL, so the sync effect must not fire.
+    mockSearchParams = new URLSearchParams("page=2");
+    render(<InvoiceDataTable data={PAGINATED} userId="u1" />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
 });

@@ -6,7 +6,6 @@ import {
   ColumnFiltersState,
   PaginationState,
   SortingState,
-  Updater,
   VisibilityState,
   flexRender,
   getCoreRowModel,
@@ -87,27 +86,6 @@ export function InvoiceDataTable({ data, userId }: Props) {
     pageIndex: parsePageParam(searchParams.get("page")),
     pageSize: DEFAULT_PAGE_SIZE,
   }));
-
-  const onPaginationChange = React.useCallback(
-    (updater: Updater<PaginationState>) => {
-      setPagination((prev) => {
-        const next = typeof updater === "function" ? updater(prev) : updater;
-        // Reflect pageIndex in the URL so back / forward / refresh / share preserve it.
-        // Page 1 = no param (canonical clean URL).
-        const params = new URLSearchParams(searchParams.toString());
-        if (next.pageIndex > 0) {
-          params.set("page", String(next.pageIndex + 1));
-        } else {
-          params.delete("page");
-        }
-        const qs = params.toString();
-        const url = qs ? `${pathname}?${qs}` : pathname;
-        router.replace(url, { scroll: false });
-        return next;
-      });
-    },
-    [router, pathname, searchParams]
-  );
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([
     { id: "status", value: ["draft", "pending", "payment_detected", "paid", "overdue"] },
@@ -166,7 +144,7 @@ export function InvoiceDataTable({ data, userId }: Props) {
   const table = useReactTable({
     data,
     columns,
-    onPaginationChange,
+    onPaginationChange: setPagination,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
@@ -208,9 +186,29 @@ export function InvoiceDataTable({ data, userId }: Props) {
   const pageCount = table.getPageCount();
   React.useEffect(() => {
     if (pageCount > 0 && pagination.pageIndex > pageCount - 1) {
-      table.setPageIndex(pageCount - 1);
+      setPagination((prev) => ({ ...prev, pageIndex: pageCount - 1 }));
     }
-  }, [pageCount, pagination.pageIndex, table]);
+  }, [pageCount, pagination.pageIndex]);
+
+  // Sync pagination → URL. Page 1 has no param (canonical clean URL).
+  // Done in an effect (not inside setPagination) to keep the state setter pure
+  // and avoid "Cannot update Router during render" when TanStack reconciles.
+  React.useEffect(() => {
+    const currentParam = searchParams.get("page");
+    const expectedParam = pagination.pageIndex > 0 ? String(pagination.pageIndex + 1) : null;
+    if (currentParam === expectedParam) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (expectedParam) {
+      params.set("page", expectedParam);
+    } else {
+      params.delete("page");
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // Intentionally narrow deps to pageIndex: searchParams is a new object on every router
+    // update, which would re-fire this effect after every replace and cause a feedback loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.pageIndex]);
 
   async function handleBulkMarkPaid() {
     setPending(true);
