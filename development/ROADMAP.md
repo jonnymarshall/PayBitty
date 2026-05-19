@@ -1697,6 +1697,31 @@ The list already has one example of the right pattern: **"Send via email"** is g
 
 ---
 
+### ⏳ v1.4.28 — Cron strategy decision before launch (Vercel Hobby workaround)
+
+**Branch:** `v1.4.28/cron-strategy` (or fold into the Vercel deploy/launch branch when that lands)
+
+**Context:** v1.4.18 shipped with `vercel.json` cron set to `0 0 * * *` (once daily) because Vercel Hobby tier hard-rejects sub-daily schedules at deploy time. The original schedule (`* * * * *`, every minute) drives two important behaviours that the daily fallback breaks:
+
+1. **BTC payment detection backfill.** The cron is what notices a payer's tx landed when the payer doesn't have the public payer page open. With daily cron, pay-and-walk-away payers don't appear as paid in the owner's dashboard until up to 24h later. Engaged payers (with the public page open) still get realtime detection via the WebSocket + REST polling that v1.4.13 wired up, so this is a "stale-tab" UX problem, not a complete outage.
+2. **`next_check_at` exponential backoff (v1.4.1).** The per-invoice schedule assumes minute-ish tick rates. Daily ticks push `next_check_at` days or weeks out after only a few runs, so the schedule effectively stops working for older invoices.
+
+Acceptable while there are zero real paying users; must be resolved before launch.
+
+**Options**
+
+- **Option A , Vercel Pro ($20/mo).** Restore `* * * * *` in `vercel.json`. Zero code changes. Cleanest. The "right" answer for a real product.
+- **Option B , External cron service.** Keep `vercel.json` on daily, but point a free third-party cron service (`cron-job.org`, `EasyCron`, `cron-job.de`) at `https://<production-domain>/api/cron/payment-sweep` every minute. The route already accepts `Authorization: Bearer $CRON_SECRET` (`src/app/api/cron/payment-sweep/route.ts:38`) , no code changes needed, just configure the external service with the URL + bearer header. Free, every-minute, full restoration of behaviour. Downside: one extra third-party dependency in a payment-critical path; must monitor it.
+
+**Scope**
+- [ ] Pick Option A or Option B (decision call, not implementation work).
+- [ ] If A: upgrade the Vercel project to Pro; revert `vercel.json` to `* * * * *`; verify cron runs as expected in production logs.
+- [ ] If B: pick the external service, configure the cron job with the production URL and `CRON_SECRET` bearer header, leave `vercel.json` on daily, verify the external service successfully hits the endpoint and produces a `200`.
+
+**Done when:** payment-sweep is verifiably running on a sub-daily cadence in production, and the Activity feed / dashboard reflects on-server detection within minutes of a payer's tx confirming.
+
+---
+
 ### ⏳ v1.5 — Design System Overhaul
 
 **Branch:** `v1.5/design-system`
