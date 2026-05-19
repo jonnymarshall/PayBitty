@@ -9,35 +9,46 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ back: mockBack, push: mockPush }),
 }));
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  // reset history length state on the global object
-  Object.defineProperty(window, "history", {
-    value: { length: 1 },
+function setReferrer(value: string) {
+  Object.defineProperty(document, "referrer", {
+    value,
     writable: true,
     configurable: true,
   });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  setReferrer("");
 });
 
 describe("BackToInvoices", () => {
-  it("calls router.back() when there is browser history", () => {
-    Object.defineProperty(window, "history", {
-      value: { length: 5 },
-      writable: true,
-      configurable: true,
-    });
+  it("calls router.back() when the referrer is same-origin (user clicked from our app)", () => {
+    setReferrer(`${window.location.origin}/invoices?page=2`);
     render(<BackToInvoices />);
     fireEvent.click(screen.getByRole("button", { name: /← invoices/i }));
     expect(mockBack).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("falls back to /invoices when history is empty (deep-link case)", () => {
-    Object.defineProperty(window, "history", {
-      value: { length: 1 },
-      writable: true,
-      configurable: true,
-    });
+  it("falls back to /invoices when document.referrer is empty (deep-link case: paste URL)", () => {
+    setReferrer("");
+    render(<BackToInvoices />);
+    fireEvent.click(screen.getByRole("button", { name: /← invoices/i }));
+    expect(mockPush).toHaveBeenCalledWith("/invoices");
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it("falls back to /invoices when referrer is from a different origin (deep-link: email click)", () => {
+    setReferrer("https://mail.google.com/inbox");
+    render(<BackToInvoices />);
+    fireEvent.click(screen.getByRole("button", { name: /← invoices/i }));
+    expect(mockPush).toHaveBeenCalledWith("/invoices");
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it("falls back to /invoices when referrer is malformed", () => {
+    setReferrer("not a url");
     render(<BackToInvoices />);
     fireEvent.click(screen.getByRole("button", { name: /← invoices/i }));
     expect(mockPush).toHaveBeenCalledWith("/invoices");
