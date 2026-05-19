@@ -1,5 +1,5 @@
 {
   "crons": [
-    { "path": "/api/cron/payment-sweep", "schedule": "* * * * *" }
+    { "path": "/api/cron/payment-sweep", "schedule": "0 0 * * *" }
   ]
 }
